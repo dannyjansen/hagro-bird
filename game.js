@@ -867,10 +867,10 @@
   async function loadAssets() {
     try {
       const [up, mid, down, sparrow, wood, oak] = await Promise.all([
-        loadImage("assets/owl-up.png"),
-        loadImage("assets/owl-mid.png"),
-        loadImage("assets/owl-down.png"),
-        loadImage("assets/sparrow.png"),
+        loadImage("assets/owl-up-v2.png"),
+        loadImage("assets/owl-mid-v2.png"),
+        loadImage("assets/owl-down-v2.png"),
+        loadImage("assets/sparrow-v2.png"),
         loadImage("assets/wood.png"),
         loadImage("assets/oak-door.png"),
       ]);
