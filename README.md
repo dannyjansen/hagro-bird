@@ -1,4 +1,4 @@
-# KastFlap
+# HagroBird
 
 Wachtspelletje voor Hagro-klanten. Tikken met één vinger: de uil (of mus) flapt tussen keukenkasten door.
 
@@ -28,7 +28,7 @@ Eenmalig inloggen, daarna vanuit de projectmap:
 npx vercel
 ```
 
-Volg de vragen (scope, projectnaam). Je krijgt een preview-URL, bijvoorbeeld `https://kastflap-xxx.vercel.app`.
+Volg de vragen (scope, projectnaam). Je krijgt een preview-URL, bijvoorbeeld `https://hagrobird-xxx.vercel.app`.
 
 ## 3. Productie
 
@@ -40,10 +40,10 @@ Of: koppel de GitHub-repo in het Vercel-dashboard. Push naar `main` bouwt en pub
 
 ## 4. Eigen subdomain
 
-In het [Vercel-dashboard](https://vercel.com/dashboard) → project **KastFlap** → **Settings** → **Domains**:
+In het [Vercel-dashboard](https://vercel.com/dashboard) → project **HagroBird** → **Settings** → **Domains**:
 
-- voeg `kastflap.jouwdomein.nl` toe, of
-- gebruik het projectdomein `kastflap.vercel.app`
+- voeg `hagrobird.jouwdomein.nl` toe, of
+- gebruik het projectdomein `hagro-bird.vercel.app`
 
 Zet DNS (CNAME) zoals Vercel aangeeft. Die URL gaat op de QR-code.
 

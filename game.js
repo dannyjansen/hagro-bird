@@ -1,14 +1,16 @@
 (() => {
   "use strict";
 
-  const STORE_HI = "kastflap-hi";
-  const STORE_MUTE = "kastflap-mute";
-  const STORE_BIRD = "kastflap-bird";
+  const STORE_HI = "hagrobird-hi";
+  const STORE_MUTE = "hagrobird-mute";
+  const STORE_BIRD = "hagrobird-bird";
 
   function storeGet(key, fallback) {
     try {
       const v = localStorage.getItem(key);
-      return v == null ? fallback : v;
+      if (v != null) return v;
+      const legacy = localStorage.getItem(key.replace("hagrobird-", "kastflap-"));
+      return legacy == null ? fallback : legacy;
     } catch {
       return fallback;
     }
@@ -228,7 +230,7 @@
       storeSet(STORE_HI, String(state.hi));
       hiEl.textContent = String(state.hi);
     }
-    titleEl.textContent = "KastFlap";
+    titleEl.textContent = "HagroBird";
     resultEl.hidden = false;
     resultEl.innerHTML = best
       ? `Nieuw record <strong>${state.score}</strong>`
@@ -923,7 +925,7 @@
   });
   document.querySelector(".site").addEventListener("pointerdown", (e) => e.stopPropagation());
 
-  window.__kastflap = () => ({
+  window.__hagrobird = () => ({
     mode: state.mode,
     score: state.score,
     y: bird.y,

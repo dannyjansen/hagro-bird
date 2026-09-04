@@ -1,6 +1,6 @@
 {
-  "name": "KastFlap",
-  "short_name": "KastFlap",
+  "name": "HagroBird",
+  "short_name": "HagroBird",
   "description": "Wachten? Speel. Het Hagro wachtspelletje.",
   "start_url": "/",
   "display": "standalone",
