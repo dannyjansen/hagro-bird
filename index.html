@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#112d63" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KastFlap" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta
+      name="description"
+      content="KastFlap — wachten? Speel. Het Hagro wachtspelletje."
+    />
+    <title>KastFlap — Hagro</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game" aria-label="KastFlap"></canvas>
+
+      <div id="hud">
+        <p id="score" aria-live="polite">0</p>
+        <button id="mute" type="button" aria-pressed="false" aria-label="Geluid aan">
+          <svg id="icon-on" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M3.5 9h3.1L11 5.8v12.4L6.6 15H3.5V9z" />
+            <path
+              d="M14.2 9.2a3.4 3.4 0 0 1 0 5.6M16.8 7a6.2 6.2 0 0 1 0 10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+            />
+          </svg>
+          <svg id="icon-off" viewBox="0 0 24 24" aria-hidden="true" hidden>
+            <path fill="currentColor" d="M3.5 9h3.1L11 5.8v12.4L6.6 15H3.5V9z" />
+            <path
+              d="M14 9.5 20 15.5M20 9.5 14 15.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div id="overlay" data-mode="start">
+        <div class="card">
+          <img class="logo" src="assets/hagro-logo.svg" width="72" height="72" alt="Hagro Keukens" />
+          <p class="eyebrow">Hagro</p>
+          <h1 id="title">KastFlap</h1>
+          <p class="tag">Wachten? Speel.</p>
+          <p id="result" class="result" hidden></p>
+          <div class="chars" role="group" aria-label="Kies een vogel">
+            <button type="button" class="char is-on" data-bird="owl">
+              <img src="assets/owl-mid.png" alt="" width="96" height="96" />
+              <span>Uil</span>
+            </button>
+            <button type="button" class="char" data-bird="sparrow">
+              <img src="assets/sparrow.png" alt="" width="96" height="96" />
+              <span>Mus</span>
+            </button>
+          </div>
+          <p class="record">Record <strong id="hi">0</strong></p>
+          <p class="cta" id="cta">Tik om te starten</p>
+          <a class="site" href="https://www.hagrokeukens.nl" target="_blank" rel="noopener"
+            >hagrokeukens.nl</a
+          >
+        </div>
+      </div>
+    </div>
+    <script src="game.js"></script>
+  </body>
+</html>

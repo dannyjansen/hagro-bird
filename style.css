@@ -1,0 +1,268 @@
+:root {
+  --navy: #074ea2;
+  --navy-deep: #112d63;
+  --anthra: #1c1f24;
+  --cream: #f3f0e9;
+  --white: #ffffff;
+  --wood: #c4a06a;
+  --gold: #c08a2c;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--navy-deep);
+  color: var(--anthra);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#hud {
+  position: absolute;
+  top: calc(10px + var(--safe-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 4;
+}
+
+#score {
+  margin: 0;
+  min-width: 2.4rem;
+  font-size: clamp(2rem, 8vw, 2.8rem);
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  color: var(--white);
+  text-shadow:
+    0 1px 0 #1c1f24,
+    0 0 2px #1c1f24,
+    0 2px 8px #1c1f2480;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+#hud.is-on #score {
+  opacity: 1;
+}
+
+#mute {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: #1c1f24cc;
+  color: var(--white);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#mute svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+#mute svg[hidden] {
+  display: none;
+}
+
+#mute:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: calc(24px + var(--safe-top)) 20px calc(24px + var(--safe-bottom));
+  background: linear-gradient(180deg, #112d63e6 0%, #1c1f24f0 100%);
+  transition: opacity 0.22s ease;
+}
+
+#overlay.is-off {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.card {
+  width: min(22.5rem, 100%);
+  text-align: center;
+  color: var(--white);
+}
+
+.logo {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 0.55rem;
+  display: block;
+  margin: 0 auto 1rem;
+  background: var(--white);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 720;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #d6e2f5;
+}
+
+h1 {
+  margin: 0.2rem 0 0;
+  font-size: clamp(2.4rem, 11vw, 3.4rem);
+  font-weight: 720;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+}
+
+.tag {
+  margin: 0.65rem 0 0;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.result {
+  margin: 0.85rem 0 0;
+  font-size: 1.05rem;
+  color: #d6e2f5;
+}
+
+.result strong {
+  color: var(--white);
+  font-size: 1.35rem;
+}
+
+.chars {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin: 1.25rem 0 0;
+}
+
+.char {
+  flex: 1;
+  max-width: 8.5rem;
+  border: 1px solid #ffffff38;
+  background: #ffffff10;
+  color: var(--white);
+  border-radius: 0.9rem;
+  padding: 0.55rem 0.4rem 0.7rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.char img {
+  width: 4.6rem;
+  height: 4.6rem;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  filter: drop-shadow(0 6px 10px #0006);
+}
+
+.char span {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.char.is-on {
+  border-color: var(--gold);
+  background: #c08a2c24;
+  box-shadow: 0 0 0 1px var(--gold);
+}
+
+.char:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.record {
+  margin: 1.1rem 0 0;
+  color: #d6e2f5;
+  font-size: 0.95rem;
+}
+
+.record strong {
+  color: var(--white);
+}
+
+.cta {
+  margin: 1.15rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.site {
+  display: inline-block;
+  margin-top: 1.15rem;
+  color: #a9c4f5;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border-bottom: 1px solid #a9c4f566;
+  padding-bottom: 1px;
+}
+
+.site:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 720px) {
+  .card {
+    width: 24rem;
+  }
+}
