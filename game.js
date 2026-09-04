@@ -131,10 +131,16 @@
     return a + Math.random() * (b - a);
   }
 
+  function viewSize() {
+    const vv = window.visualViewport;
+    const W = Math.max(1, Math.round(vv && vv.width ? vv.width : window.innerWidth));
+    const H = Math.max(1, Math.round(vv && vv.height ? vv.height : window.innerHeight));
+    return { W, H };
+  }
+
   function layout() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const W = Math.max(1, window.innerWidth);
-    const H = Math.max(1, window.innerHeight);
+    const { W, H } = viewSize();
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     canvas.style.width = W + "px";
@@ -142,27 +148,27 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     state.W = W;
     state.H = H;
-    state.vu = H / 800;
-    state.groundH = Math.max(68, H * 0.11);
-    state.ceilH = Math.max(26, H * 0.042);
+    state.vu = clamp(W / 390, 0.82, 1.15);
+    state.groundH = Math.max(48, H * 0.08);
+    state.ceilH = Math.max(20, H * 0.03);
     state.playH = H - state.groundH - state.ceilH;
-    bird.size = clamp(Math.round(H * 0.1), 58, 88);
-    bird.x = W * 0.26;
-    state.cabW = clamp(Math.round(W * 0.26), 88, 120);
+    bird.size = clamp(Math.round(46 * state.vu), 40, 56);
+    bird.x = W * 0.22;
+    state.cabW = clamp(Math.round(62 * state.vu), 52, 74);
   }
 
   function difficulty(score) {
-    const t = clamp(score / 16, 0, 1);
+    const t = clamp(score / 18, 0, 1);
     return {
-      speed: lerp(210, 320, t) * state.vu,
-      gap: lerp(0.28, 0.185, t) * state.playH,
-      spacing: lerp(172, 146, t) * Math.max(state.W / 390, 0.9),
+      speed: lerp(188, 275, t) * state.vu,
+      gap: lerp(0.34, 0.24, t) * state.playH,
+      spacing: lerp(248, 210, t) * state.vu,
     };
   }
 
   function makeCab(x) {
     const d = difficulty(state.score);
-    const minCab = Math.max(90, state.playH * 0.16);
+    const minCab = Math.max(64, state.playH * 0.12);
     const gapH = d.gap;
     const lo = state.ceilH + minCab;
     const hi = state.H - state.groundH - minCab - gapH;
@@ -185,8 +191,8 @@
     cabs.length = 0;
     bits.length = 0;
     const d = difficulty(0);
-    const startX = attract ? state.W * 0.48 : state.W + 10;
-    for (let i = 0; i < 5; i++) cabs.push(makeCab(startX + i * d.spacing));
+    const startX = attract ? state.W * 0.58 : state.W + 36;
+    for (let i = 0; i < 6; i++) cabs.push(makeCab(startX + i * d.spacing));
     bird.y = state.H * 0.42;
     bird.vy = 0;
     bird.frame = 1;
@@ -203,7 +209,7 @@
     state.mode = "play";
     overlay.classList.add("is-off");
     hud.classList.add("is-on");
-    bird.vy = -460 * state.vu;
+    bird.vy = -400 * state.vu;
     sfx.flap();
     puff(bird.x - 8, bird.y + 10, 6, PAL.white);
   }
@@ -251,7 +257,7 @@
       startGame();
       return;
     }
-    bird.vy = -540 * state.vu;
+    bird.vy = -460 * state.vu;
     bird.wingT = 0;
     sfx.flap();
     puff(bird.x - 10, bird.y + 12, 5, "#ffffffcc");
@@ -317,8 +323,8 @@
       return;
     }
 
-    const g = 2050 * state.vu;
-    bird.vy = Math.min(bird.vy + g * dt, 980 * state.vu);
+    const g = 1680 * state.vu;
+    bird.vy = Math.min(bird.vy + g * dt, 820 * state.vu);
     bird.y += bird.vy * dt;
     bird.wingT += dt * (bird.vy < 0 ? 16 : 9);
 
@@ -885,11 +891,15 @@
     }
   }
 
-  window.addEventListener("resize", () => {
+  function onResize() {
     const yRatio = bird.y / (state.H || 1);
     layout();
     bird.y = yRatio * state.H;
-  });
+  }
+  window.addEventListener("resize", onResize);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onResize);
+  }
   window.addEventListener("pointerdown", onPointer, { passive: false });
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space" || e.code === "ArrowUp") {

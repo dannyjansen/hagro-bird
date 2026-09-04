@@ -35,6 +35,7 @@ body {
 #app {
   position: relative;
   width: 100%;
+  width: 100dvw;
   height: 100%;
   height: 100dvh;
   overflow: hidden;
@@ -43,7 +44,9 @@ body {
 #game {
   display: block;
   width: 100%;
+  width: 100dvw;
   height: 100%;
+  height: 100dvh;
   touch-action: none;
 }
 
