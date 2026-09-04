@@ -146,23 +146,23 @@
     state.groundH = Math.max(68, H * 0.11);
     state.ceilH = Math.max(26, H * 0.042);
     state.playH = H - state.groundH - state.ceilH;
-    bird.size = clamp(Math.round(H * 0.092), 54, 82);
-    bird.x = W * 0.27;
-    state.cabW = clamp(Math.round(W * 0.2), 70, 98);
+    bird.size = clamp(Math.round(H * 0.1), 58, 88);
+    bird.x = W * 0.26;
+    state.cabW = clamp(Math.round(W * 0.26), 88, 120);
   }
 
   function difficulty(score) {
-    const t = clamp(score / 22, 0, 1);
+    const t = clamp(score / 16, 0, 1);
     return {
-      speed: lerp(150, 255, t) * state.vu,
-      gap: lerp(0.36, 0.24, t) * state.playH,
-      spacing: lerp(290, 220, t) * Math.max(state.W / 390, 0.85),
+      speed: lerp(210, 320, t) * state.vu,
+      gap: lerp(0.28, 0.185, t) * state.playH,
+      spacing: lerp(172, 146, t) * Math.max(state.W / 390, 0.9),
     };
   }
 
   function makeCab(x) {
     const d = difficulty(state.score);
-    const minCab = Math.max(58, state.playH * 0.12);
+    const minCab = Math.max(90, state.playH * 0.16);
     const gapH = d.gap;
     const lo = state.ceilH + minCab;
     const hi = state.H - state.groundH - minCab - gapH;
@@ -185,8 +185,8 @@
     cabs.length = 0;
     bits.length = 0;
     const d = difficulty(0);
-    const startX = attract ? state.W * 0.52 : state.W + 40;
-    for (let i = 0; i < 4; i++) cabs.push(makeCab(startX + i * d.spacing));
+    const startX = attract ? state.W * 0.48 : state.W + 10;
+    for (let i = 0; i < 5; i++) cabs.push(makeCab(startX + i * d.spacing));
     bird.y = state.H * 0.42;
     bird.vy = 0;
     bird.frame = 1;
@@ -203,7 +203,7 @@
     state.mode = "play";
     overlay.classList.add("is-off");
     hud.classList.add("is-on");
-    bird.vy = -430 * state.vu;
+    bird.vy = -460 * state.vu;
     sfx.flap();
     puff(bird.x - 8, bird.y + 10, 6, PAL.white);
   }
@@ -251,7 +251,7 @@
       startGame();
       return;
     }
-    bird.vy = -500 * state.vu;
+    bird.vy = -540 * state.vu;
     bird.wingT = 0;
     sfx.flap();
     puff(bird.x - 10, bird.y + 12, 5, "#ffffffcc");
@@ -317,8 +317,8 @@
       return;
     }
 
-    const g = 1780 * state.vu;
-    bird.vy = Math.min(bird.vy + g * dt, 920 * state.vu);
+    const g = 2050 * state.vu;
+    bird.vy = Math.min(bird.vy + g * dt, 980 * state.vu);
     bird.y += bird.vy * dt;
     bird.wingT += dt * (bird.vy < 0 ? 16 : 9);
 
@@ -358,7 +358,7 @@
       }
     }
 
-    const r = bird.size * 0.22;
+    const r = bird.size * 0.24;
     if (bird.y - r < state.ceilH || bird.y + r > state.H - state.groundH) {
       gameOver();
       return;
@@ -385,165 +385,329 @@
     }
   }
 
-  function fillBody(x, y, w, h, variant) {
+  function mat(variant) {
     if (variant === "wood") {
-      ctx.save();
-      roundRect(x, y, w, h, 5);
-      ctx.clip();
-      if (assets.oak) ctx.drawImage(assets.oak, x, y, w, Math.max(h, w));
-      else if (woodPat) {
-        ctx.fillStyle = woodPat;
-        ctx.fillRect(x, y, w, h);
-      } else {
-        ctx.fillStyle = PAL.wood;
-        ctx.fillRect(x, y, w, h);
-      }
-      ctx.fillStyle = "rgba(40,24,8,0.12)";
-      ctx.fillRect(x, y, w, h);
-      ctx.restore();
-      ctx.strokeStyle = "rgba(70,42,16,0.55)";
-      ctx.lineWidth = 1.5;
-      roundRect(x, y, w, h, 5);
-      ctx.stroke();
-      return;
+      return {
+        edge: "rgba(72,44,18,0.55)",
+        inner: "rgba(40,24,8,0.16)",
+        hi: "rgba(255,230,190,0.22)",
+        sh: "rgba(40,20,8,0.3)",
+        handle: "#1a1d21",
+        handleHi: "#7a8088",
+        groove: "rgba(40,20,8,0.28)",
+        side: "#7a5a32",
+      };
     }
     if (variant === "anthra") {
-      const g = ctx.createLinearGradient(x, y, x + w, y);
-      g.addColorStop(0, "#2f3338");
-      g.addColorStop(0.5, "#3d4248");
-      g.addColorStop(1, "#2a2e33");
-      ctx.fillStyle = g;
-      roundRect(x, y, w, h, 5);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-      return;
+      return {
+        edge: "rgba(0,0,0,0.45)",
+        inner: "rgba(0,0,0,0.2)",
+        hi: "rgba(255,255,255,0.1)",
+        sh: "rgba(0,0,0,0.38)",
+        handle: PAL.gold,
+        handleHi: "#e8c56a",
+        groove: "rgba(255,255,255,0.1)",
+        side: "#1c2025",
+      };
     }
-    const g = ctx.createLinearGradient(x, y, x + w, y);
-    g.addColorStop(0, "#f3f1ec");
-    g.addColorStop(0.45, "#fff");
-    g.addColorStop(1, "#e7e3db");
-    ctx.fillStyle = g;
-    roundRect(x, y, w, h, 5);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(160,150,138,0.55)";
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
+    return {
+      edge: "rgba(140,130,118,0.55)",
+      inner: "rgba(0,0,0,0.06)",
+      hi: "rgba(255,255,255,0.55)",
+      sh: "rgba(120,110,98,0.24)",
+      handle: PAL.navy,
+      handleHi: "#4d8adf",
+      groove: "rgba(90,82,72,0.18)",
+      side: "#cfc8bc",
+    };
   }
 
-  function handleColor(variant) {
-    if (variant === "anthra") return PAL.gold;
-    if (variant === "wood") return PAL.handle;
-    return PAL.navy;
-  }
-
-  function drawDoor(x, y, w, h, variant, handleAt) {
+  function fillFace(x, y, w, h, variant, r) {
+    const m = mat(variant);
     ctx.save();
-    fillBody(x, y, w, h, variant);
-    ctx.strokeStyle = variant === "anthra" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-    ctx.lineWidth = 1;
-    const inset = Math.max(5, w * 0.1);
-    roundRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 2);
-    ctx.stroke();
-    const lines = 3;
-    ctx.globalAlpha = 0.12;
-    ctx.strokeStyle = variant === "white" ? "#6d655c" : "#fff";
-    for (let i = 1; i < lines; i++) {
-      const ly = y + (h * i) / lines;
-      ctx.beginPath();
-      ctx.moveTo(x + inset + 2, ly);
-      ctx.lineTo(x + w - inset - 2, ly);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    const hw = Math.max(14, w * 0.42);
-    const hh = 4;
-    const hx = x + (w - hw) / 2;
-    const hy = handleAt === "top" ? y + 10 : y + h - 14;
-    ctx.fillStyle = handleColor(variant);
-    roundRect(hx, hy, hw, hh, 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawSolid(cab, y, h, isTop) {
-    const { x, w, variant } = cab;
-    ctx.fillStyle = "rgba(20,24,30,0.18)";
-    ctx.fillRect(x + 5, y + 7, w, h);
-    fillBody(x, y, w, h, variant);
-
-    if (!isTop) {
-      const th = Math.max(9, Math.min(16, h * 0.08));
-      ctx.save();
-      roundRect(x - 4, y, w + 8, th, 2);
-      ctx.clip();
-      if (woodPat) {
+    roundRect(x, y, w, h, r);
+    ctx.clip();
+    if (variant === "wood") {
+      if (assets.oak) {
+        const tw = 110;
+        for (let yy = y; yy < y + h; yy += tw) {
+          for (let xx = x; xx < x + w; xx += tw) {
+            ctx.drawImage(assets.oak, xx, yy, tw, tw);
+          }
+        }
+      } else if (woodPat) {
         ctx.fillStyle = woodPat;
-        ctx.fillRect(x - 4, y, w + 8, th);
+        ctx.fillRect(x, y, w, h);
       } else {
         ctx.fillStyle = PAL.wood;
-        ctx.fillRect(x - 4, y, w + 8, th);
+        ctx.fillRect(x, y, w, h);
       }
-      ctx.fillStyle = "rgba(0,0,0,0.12)";
-      ctx.fillRect(x - 4, y + th - 3, w + 8, 3);
-      ctx.restore();
-      ctx.fillStyle = PAL.anthra;
-      ctx.fillRect(x + 3, y + h - 9, w - 6, 9);
+      ctx.fillStyle = "rgba(60,36,12,0.1)";
+      ctx.fillRect(x, y, w, h);
+    } else if (variant === "anthra") {
+      const g = ctx.createLinearGradient(x, y, x + w, y);
+      g.addColorStop(0, "#2a2e34");
+      g.addColorStop(0.45, "#41484f");
+      g.addColorStop(1, "#262a2f");
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
     } else {
-      ctx.fillStyle = variant === "anthra" ? "#23262b" : variant === "wood" ? PAL.woodDark : "#ded9d0";
-      ctx.fillRect(x - 3, y + h - 6, w + 6, 6);
+      const g = ctx.createLinearGradient(x, y, x + w, y);
+      g.addColorStop(0, "#ece8e0");
+      g.addColorStop(0.35, "#fffcf7");
+      g.addColorStop(1, "#ddd6cb");
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
     }
+    ctx.fillStyle = m.hi;
+    ctx.fillRect(x, y, 3, h);
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillStyle = m.sh;
+    ctx.fillRect(x + w - 3, y, 3, h);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.restore();
+    ctx.strokeStyle = m.edge;
+    ctx.lineWidth = 1.15;
+    roundRect(x, y, w, h, r);
+    ctx.stroke();
+  }
 
-    const inset = 7;
-    const gap = 5;
-    const doorW = (w - inset * 2 - gap) / 2;
-    const topPad = isTop ? 8 : Math.max(14, h * 0.08) + 4;
-    const botPad = isTop ? 12 : 14;
-    const doorY = y + topPad;
-    const doorH = Math.max(20, h - topPad - botPad);
-    if (doorH > 18) {
-      drawDoor(x + inset, doorY, doorW, doorH, variant, isTop ? "bottom" : "top");
-      drawDoor(x + inset + doorW + gap, doorY, doorW, doorH, variant, isTop ? "bottom" : "top");
+  function drawBar(x, y, len, thick, vertical, color, hi) {
+    if (len < 8) return;
+    ctx.save();
+    if (vertical) {
+      roundRect(x, y, thick, len, thick / 2);
+      const g = ctx.createLinearGradient(x, y, x + thick, y);
+      g.addColorStop(0, hi);
+      g.addColorStop(0.45, color);
+      g.addColorStop(1, color);
+      ctx.fillStyle = g;
+      ctx.fill();
+    } else {
+      roundRect(x, y, len, thick, thick / 2);
+      const g = ctx.createLinearGradient(x, y, x, y + thick);
+      g.addColorStop(0, hi);
+      g.addColorStop(0.45, color);
+      g.addColorStop(1, color);
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawShakerDoor(x, y, w, h, variant, handleSide) {
+    const m = mat(variant);
+    fillFace(x, y, w, h, variant, 3);
+    const fr = Math.max(5, Math.min(9, w * 0.15));
+    if (h > fr * 2 + 10 && w > fr * 2 + 8) {
+      ctx.strokeStyle = m.groove;
+      ctx.lineWidth = 1.5;
+      roundRect(x + fr, y + fr, w - fr * 2, h - fr * 2, 2);
+      ctx.stroke();
+      ctx.fillStyle = m.inner;
+      ctx.fillRect(x + fr + 1, y + fr + 1, w - fr * 2 - 2, 3);
+    }
+    const thick = 3.4;
+    if (handleSide === "right") {
+      drawBar(x + w - 8, y + 8, Math.max(14, h - 16), thick, true, m.handle, m.handleHi);
+    } else if (handleSide === "left") {
+      drawBar(x + 4.5, y + 8, Math.max(14, h - 16), thick, true, m.handle, m.handleHi);
+    } else if (handleSide === "h-top") {
+      drawBar(x + w * 0.16, y + 7, w * 0.68, thick, false, m.handle, m.handleHi);
+    } else if (handleSide === "h-bot") {
+      drawBar(x + w * 0.16, y + h - 11, w * 0.68, thick, false, m.handle, m.handleHi);
     }
   }
 
-  function drawFrame(cab, y, h, isTop) {
-    const { x, w, variant } = cab;
-    const t = Math.max(10, w * 0.16);
-    ctx.fillStyle = "rgba(20,24,30,0.16)";
-    ctx.fillRect(x + 4, y + 5, w, h);
-    fillBody(x, y, w, h, variant);
-    ctx.save();
-    ctx.beginPath();
-    roundRect(x + t, y + t, w - t * 2, Math.max(4, h - t * 2), 3);
-    ctx.clip();
-    ctx.fillStyle = "#efe6d6";
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "rgba(28,31,36,0.18)";
-    ctx.fillRect(x + t, y + h * 0.48, w - t * 2, 4);
-    ctx.restore();
-    ctx.strokeStyle = "rgba(0,0,0,0.2)";
-    ctx.lineWidth = 1.2;
-    roundRect(x + t, y + t, w - t * 2, Math.max(4, h - t * 2), 3);
-    ctx.stroke();
-    if (!isTop) {
-      ctx.fillStyle = PAL.anthra;
-      ctx.fillRect(x + 2, y + h - 8, w - 4, 8);
+  function drawDoorPair(x, y, w, h, variant, preferH) {
+    const gap = 3;
+    const pad = 5;
+    const dw = (w - pad * 2 - gap) / 2;
+    if (dw < 14 || h < 18) {
+      fillFace(x, y, w, h, variant, 3);
+      return;
     }
+    const useH = preferH || h < 44;
+    if (useH) {
+      const at = preferH === "h-bot" ? "h-bot" : "h-top";
+      drawShakerDoor(x + pad, y, dw, h, variant, at);
+      drawShakerDoor(x + pad + dw + gap, y, dw, h, variant, at);
+    } else {
+      drawShakerDoor(x + pad, y, dw, h, variant, "right");
+      drawShakerDoor(x + pad + dw + gap, y, dw, h, variant, "left");
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.fillRect(x + pad + dw, y + 2, gap, h - 4);
+  }
+
+  function drawDrawer(x, y, w, h, variant) {
+    const m = mat(variant);
+    fillFace(x, y, w, h, variant, 3);
+    drawBar(x + w * 0.2, y + h / 2 - 2, w * 0.6, 4, false, m.handle, m.handleHi);
+  }
+
+  function drawWorktop(x, y, w, th, variant) {
+    const ox = 6;
+    ctx.save();
+    roundRect(x - ox, y, w + ox * 2, th, 2);
+    ctx.clip();
+    if (variant === "anthra") {
+      const g = ctx.createLinearGradient(x, y, x, y + th);
+      g.addColorStop(0, "#6a7078");
+      g.addColorStop(0.5, "#3e444c");
+      g.addColorStop(1, "#2a2e33");
+      ctx.fillStyle = g;
+      ctx.fillRect(x - ox, y, w + ox * 2, th);
+    } else if (woodPat) {
+      ctx.fillStyle = woodPat;
+      ctx.fillRect(x - ox, y, w + ox * 2, th);
+    } else {
+      ctx.fillStyle = PAL.wood;
+      ctx.fillRect(x - ox, y, w + ox * 2, th);
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fillRect(x - ox, y, w + ox * 2, 3);
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillRect(x - ox, y + th - 4, w + ox * 2, 4);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(40,24,8,0.35)";
+    ctx.lineWidth = 1;
+    roundRect(x - ox, y, w + ox * 2, th, 2);
+    ctx.stroke();
+  }
+
+  function drawPlinth(x, y, w, h) {
+    ctx.fillStyle = "#1a1d21";
+    ctx.fillRect(x + 5, y, w - 10, h);
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(x + 5, y, w - 10, 2);
+  }
+
+  function drawCornice(x, y, w, h, variant) {
+    fillFace(x - 3, y, w + 6, h, variant, 1);
+    ctx.fillStyle = "rgba(0,0,0,0.16)";
+    ctx.fillRect(x - 3, y + h - 2, w + 6, 2);
+  }
+
+  function drawLightRail(x, y, w) {
+    ctx.fillStyle = "#2a2d32";
+    ctx.fillRect(x + 3, y - 4, w - 6, 4);
+    const glow = ctx.createLinearGradient(x, y, x, y + 18);
+    glow.addColorStop(0, "rgba(232,196,110,0.38)");
+    glow.addColorStop(1, "rgba(232,196,110,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x + 6, y, w - 12, 18);
+  }
+
+  function drawShelfBits(x, y, w) {
+    ctx.fillStyle = "rgba(255,252,247,0.7)";
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.3, y, Math.min(11, w * 0.14), 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(80,70,60,0.35)";
+    ctx.stroke();
+    ctx.fillStyle = "rgba(7,78,162,0.4)";
+    roundRect(x + w * 0.62, y - 11, 7, 12, 1.5);
+    ctx.fill();
+  }
+
+  function drawOpenCarcass(x, y, w, h, variant) {
+    const t = Math.max(8, w * 0.12);
+    fillFace(x, y, w, h, variant, 4);
+    const ih = Math.max(6, h - t * 2);
+    ctx.save();
+    roundRect(x + t, y + t, w - t * 2, ih, 2);
+    ctx.clip();
+    ctx.fillStyle = "#d7cbb6";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "rgba(0,0,0,0.14)";
+    ctx.fillRect(x + t, y + t, 5, ih);
+    const shelves = Math.max(1, Math.floor(ih / 40));
+    for (let i = 1; i <= shelves; i++) {
+      const sy = y + t + (ih * i) / (shelves + 1);
+      ctx.fillStyle = variant === "wood" ? "rgba(90,55,22,0.4)" : "rgba(40,40,40,0.22)";
+      ctx.fillRect(x + t, sy, w - t * 2, 4);
+      drawShelfBits(x + t, sy - 2, w - t * 2);
+    }
+    ctx.restore();
+    ctx.strokeStyle = "rgba(0,0,0,0.22)";
+    ctx.lineWidth = 1.1;
+    roundRect(x + t, y + t, w - t * 2, ih, 2);
+    ctx.stroke();
+  }
+
+  function drawColumn(cab, y, h, isTop) {
+    const { x, w, variant, kind } = cab;
+    if (h < 8) return;
+    const depth = Math.max(7, w * 0.1);
+    const frontW = w - depth;
+
+    ctx.fillStyle = "rgba(20,24,30,0.2)";
+    ctx.fillRect(x + 6, y + 8, w, Math.max(0, h - 4));
+
+    ctx.fillStyle = mat(variant).side;
+    ctx.beginPath();
+    ctx.moveTo(x + frontW, y);
+    ctx.lineTo(x + w, y + 6);
+    ctx.lineTo(x + w, y + h + 6);
+    ctx.lineTo(x + frontW, y + h);
+    ctx.closePath();
+    ctx.fill();
+
+    if (kind === "frame") {
+      drawOpenCarcass(x, y, frontW, h, variant);
+      if (!isTop) drawPlinth(x, y + h - 10, frontW, 10);
+      else drawLightRail(x, y + h, frontW);
+      return;
+    }
+
+    if (isTop) {
+      const cornice = Math.min(9, h * 0.12);
+      const rail = 5;
+      const bodyH = h - cornice - rail;
+      if (bodyH < 22) {
+        fillFace(x, y, frontW, h, variant, 4);
+        drawLightRail(x, y + h, frontW);
+        return;
+      }
+      drawCornice(x, y, frontW, cornice, variant);
+      const target = clamp(frontW * 0.82, 46, 74);
+      const n = Math.max(1, Math.round(bodyH / target));
+      const modH = bodyH / n;
+      const bodyY = y + cornice;
+      for (let i = 0; i < n; i++) {
+        drawDoorPair(x, bodyY + i * modH + 1, frontW, modH - 2, variant, i === n - 1 ? "h-bot" : false);
+      }
+      drawLightRail(x, y + h, frontW);
+      return;
+    }
+
+    const topTh = clamp(h * 0.075, 17, 22);
+    const drawerH = clamp(h * 0.11, 24, 34);
+    const plinth = 12;
+    drawWorktop(x, y, frontW, topTh, variant);
+    let y0 = y + topTh;
+    let remain = h - topTh - plinth;
+    if (remain > drawerH + 30) {
+      drawDrawer(x + 5, y0 + 2, frontW - 10, drawerH - 4, variant);
+      y0 += drawerH;
+      remain -= drawerH;
+    }
+    const target = clamp(frontW * 1.02, 50, 86);
+    const n = Math.max(1, Math.round(remain / target));
+    const modH = remain / n;
+    for (let i = 0; i < n; i++) {
+      drawDoorPair(x, y0 + i * modH + 1, frontW, modH - 2, variant, i === 0 ? "h-top" : false);
+    }
+    drawPlinth(x, y + h - plinth, frontW, plinth);
   }
 
   function drawCabinet(cab) {
     const topH = cab.gapY;
     const botY = cab.gapY + cab.gapH;
     const botH = state.H - botY;
-    if (cab.kind === "frame") {
-      drawFrame(cab, 0, topH, true);
-      drawFrame(cab, botY, botH, false);
-    } else {
-      drawSolid(cab, 0, topH, true);
-      drawSolid(cab, botY, botH, false);
-    }
+    drawColumn(cab, 0, topH, true);
+    drawColumn(cab, botY, botH, false);
   }
 
   function drawWorld() {
@@ -555,15 +719,17 @@
     ctx.fillRect(0, 0, W, H);
 
     const far = state.bgX * 0.22;
-    ctx.globalAlpha = 0.18;
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = PAL.navyDeep;
     for (let i = 0; i < 8; i++) {
-      const fx = ((i * 90 - far) % (W + 180)) - 40;
-      const fh = 70 + (i % 3) * 28;
-      ctx.fillStyle = PAL.navyDeep;
-      roundRect(fx, ceilH + 20, 54, fh, 3);
+      const fx = ((i * 96 - far) % (W + 200)) - 50;
+      const topH = 52 + (i % 3) * 18;
+      roundRect(fx, ceilH + 14, 58, topH, 2);
       ctx.fill();
-      roundRect(fx + 10, H - groundH - fh - 10, 54, fh, 3);
+      const botH = 64 + (i % 2) * 22;
+      roundRect(fx + 8, H - groundH - botH, 62, botH, 2);
       ctx.fill();
+      ctx.fillRect(fx + 5, H - groundH - botH - 6, 68, 6);
     }
     ctx.globalAlpha = 1;
 
