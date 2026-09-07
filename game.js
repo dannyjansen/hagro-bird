@@ -36,8 +36,15 @@
     handle: "#2a2d32",
   };
 
+  const J = window.HagroJump;
+  if (!J) throw new Error("jump.js moet voor game.js geladen worden");
+  const PHYS = J.PHYS;
+
   const canvas = document.getElementById("game");
-  const ctx = canvas.getContext("2d");
+  const ctx =
+    canvas.getContext("2d", { alpha: false, desynchronized: true }) ||
+    canvas.getContext("2d", { alpha: false });
+  let gfx = ctx;
   const overlay = document.getElementById("overlay");
   const hud = document.getElementById("hud");
   const scoreEl = document.getElementById("score");
@@ -59,6 +66,10 @@
   };
 
   let woodPat = null;
+  let oakPat = null;
+  let wallGrad = null;
+  let prepared = null;
+  const CACHE_PAD = 22;
 
   const sfx = {
     ctx: null,
@@ -109,7 +120,13 @@
     flash: 0,
     bgX: 0,
     hover: 0,
+    quality: J.pickStartQuality({
+      deviceMemory: navigator.deviceMemory,
+      saveData: !!(navigator.connection && navigator.connection.saveData),
+    }),
+    lastDraw: 0,
   };
+  const frameSamples = [];
 
   const bird = {
     x: 110,
@@ -134,20 +151,33 @@
   }
 
   function viewSize() {
-    const vv = window.visualViewport;
-    const W = Math.max(1, Math.round(vv && vv.width ? vv.width : window.innerWidth));
-    const H = Math.max(1, Math.round(vv && vv.height ? vv.height : window.innerHeight));
+    const W = Math.max(1, Math.round(window.innerWidth || 1));
+    const H = Math.max(1, Math.round(window.innerHeight || 1));
     return { W, H };
   }
 
+  function qcfg() {
+    return J.qualityConfig(state.quality);
+  }
+
   function layout() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const q = qcfg();
+    const dpr = Math.min(window.devicePixelRatio || 1, q.dprCap);
+    state.drawDpr = dpr;
+    state.cacheDpr = q.cacheDpr;
+    state.simple = q.simple;
     const { W, H } = viewSize();
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
+    const pixelW = Math.round(W * dpr);
+    const pixelH = Math.round(H * dpr);
+    if (canvas.width === pixelW && canvas.height === pixelH && state.W === W && state.H === H && state.drawDpr === dpr) {
+      return;
+    }
+    canvas.width = pixelW;
+    canvas.height = pixelH;
     canvas.style.width = W + "px";
     canvas.style.height = H + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = !q.simple;
     state.W = W;
     state.H = H;
     state.vu = clamp(W / 390, 0.82, 1.15);
@@ -157,44 +187,42 @@
     bird.size = clamp(Math.round(46 * state.vu), 40, 56);
     bird.x = W * 0.22;
     state.cabW = clamp(Math.round(62 * state.vu), 52, 74);
+    wallGrad = ctx.createLinearGradient(0, 0, 0, H);
+    wallGrad.addColorStop(0, "#f5efe5");
+    wallGrad.addColorStop(1, "#e6d9c4");
+    for (let i = 0; i < cabs.length; i++) cabs[i].w = state.cabW;
+    invalidateCabCaches();
   }
 
   function difficulty(score) {
-    const t = clamp(score / 18, 0, 1);
+    return J.difficulty(score, state.vu, state.playH);
+  }
+
+  function layoutOpts() {
     return {
-      speed: lerp(188, 275, t) * state.vu,
-      gap: lerp(0.34, 0.24, t) * state.playH,
-      spacing: lerp(248, 210, t) * state.vu,
+      vu: state.vu,
+      W: state.W,
+      H: state.H,
+      ceilH: state.ceilH,
+      groundH: state.groundH,
+      playH: state.playH,
+      cabW: state.cabW,
+      birdY: state.H * 0.42,
+      birdR: bird.size * 0.24,
     };
   }
 
-  function makeCab(x) {
-    const d = difficulty(state.score);
-    const minCab = Math.max(64, state.playH * 0.12);
-    const gapH = d.gap;
-    const lo = state.ceilH + minCab;
-    const hi = state.H - state.groundH - minCab - gapH;
-    const gapY = lo >= hi ? (lo + hi) / 2 : rand(lo, hi);
-    const roll = Math.random();
-    const variant = roll < 0.42 ? "white" : roll < 0.78 ? "wood" : "anthra";
-    const kind = Math.random() < 0.2 ? "frame" : "solid";
-    return {
-      x,
-      w: state.cabW,
-      gapY,
-      gapH,
-      variant,
-      kind,
-      scored: false,
-    };
+  function spawnCab(x, prev, score) {
+    return J.makeCabinet(Object.assign(layoutOpts(), { x, prev, score }));
   }
 
-  function resetWorld(attract) {
-    cabs.length = 0;
-    bits.length = 0;
-    const d = difficulty(0);
-    const startX = attract ? state.W * 0.58 : state.W + 36;
-    for (let i = 0; i < 6; i++) cabs.push(makeCab(startX + i * d.spacing));
+  function prepareLevel() {
+    prepared = J.buildCabinets(
+      Object.assign(layoutOpts(), { count: J.AHEAD, startX: state.W + 36 })
+    );
+  }
+
+  function resetBird() {
     bird.y = state.H * 0.42;
     bird.vy = 0;
     bird.frame = 1;
@@ -206,14 +234,30 @@
     scoreEl.textContent = "0";
   }
 
+  function resetWorld(attract) {
+    cabs.length = 0;
+    bits.length = 0;
+    const startX = attract ? state.W * 0.58 : state.W + 36;
+    const count = attract ? 6 : J.AHEAD;
+    const built = J.buildCabinets(Object.assign(layoutOpts(), { count, startX }));
+    for (let i = 0; i < built.length; i++) cabs.push(built[i]);
+    resetBird();
+  }
+
   function startGame() {
-    resetWorld();
+    bits.length = 0;
+    if (!prepared || prepared.length < J.AHEAD) prepareLevel();
+    cabs.length = 0;
+    for (let i = 0; i < prepared.length; i++) cabs.push(prepared[i]);
+    prepared = null;
+    resetBird();
     state.mode = "play";
     overlay.classList.add("is-off");
     hud.classList.add("is-on");
     bird.vy = -400 * state.vu;
     sfx.flap();
     puff(bird.x - 8, bird.y + 10, 6, PAL.white);
+    warmUpcoming(true);
   }
 
   function gameOver() {
@@ -237,35 +281,46 @@
       : `Score <strong>${state.score}</strong>`;
     ctaEl.textContent = "Tik om opnieuw";
     overlay.dataset.mode = "dead";
+    prepareLevel();
     window.setTimeout(() => {
       if (state.mode === "dead") {
         overlay.classList.remove("is-off");
         hud.classList.remove("is-on");
+        warmPrepared(8);
+        idleWarm();
       }
     }, 420);
   }
 
   function flap() {
-    sfx.ensure();
     if (state.mode === "start") {
+      sfx.ensure();
       startGame();
       return;
     }
     if (state.mode === "dead") {
       if (performance.now() - state.diedAt < 480) return;
+      sfx.ensure();
       overlay.dataset.mode = "start";
       resultEl.hidden = true;
       ctaEl.textContent = "Tik om te starten";
       startGame();
       return;
     }
-    bird.vy = -460 * state.vu;
+    bird.vy = PHYS.flap * state.vu;
     bird.wingT = 0;
-    sfx.flap();
-    puff(bird.x - 10, bird.y + 12, 5, "#ffffffcc");
+    const jx = bird.x - 10;
+    const jy = bird.y + 12;
+    requestAnimationFrame(() => {
+      sfx.flap();
+      puff(jx, jy, 5, "#ffffffcc");
+    });
   }
 
   function puff(x, y, n, color) {
+    const scale = qcfg().particles;
+    if (scale <= 0) return;
+    n = Math.max(1, Math.round(n * scale));
     for (let i = 0; i < n; i++) {
       bits.push({
         x,
@@ -325,8 +380,8 @@
       return;
     }
 
-    const g = 1680 * state.vu;
-    bird.vy = Math.min(bird.vy + g * dt, 820 * state.vu);
+    const g = PHYS.gravity * state.vu;
+    bird.vy = Math.min(bird.vy + g * dt, PHYS.vyMax * state.vu);
     bird.y += bird.vy * dt;
     bird.wingT += dt * (bird.vy < 0 ? 16 : 9);
 
@@ -340,10 +395,8 @@
     }
 
     const d = difficulty(state.score);
-    let right = 0;
     for (const cab of cabs) {
       cab.x -= d.speed * dt;
-      right = Math.max(right, cab.x);
       if (!cab.scored && cab.x + cab.w < bird.x) {
         cab.scored = true;
         state.score += 1;
@@ -352,19 +405,22 @@
         puff(bird.x + 16, bird.y, 7, PAL.gold);
       }
     }
-    for (const cab of cabs) {
-      if (cab.x + cab.w < -40) {
-        const fresh = makeCab(right + d.spacing);
-        cab.x = fresh.x;
-        cab.w = fresh.w;
-        cab.gapY = fresh.gapY;
-        cab.gapH = fresh.gapH;
-        cab.variant = fresh.variant;
-        cab.kind = fresh.kind;
-        cab.scored = false;
-        right = cab.x;
-      }
+    while (cabs.length && cabs[0].x + cabs[0].w < -80) {
+      cabs.shift().cache = null;
     }
+    while (cabs.length < J.AHEAD) {
+      const last = cabs[cabs.length - 1];
+      if (!last) {
+        const built = J.buildCabinets(
+          Object.assign(layoutOpts(), { count: J.AHEAD, startX: state.W + 36 })
+        );
+        for (let i = 0; i < built.length; i++) cabs.push(built[i]);
+        break;
+      }
+      const idx = last.idx + 1;
+      cabs.push(spawnCab(last.x + difficulty(idx).spacing, last, idx));
+    }
+    warmUpcoming(false);
 
     const r = bird.size * 0.24;
     if (bird.y - r < state.ceilH || bird.y + r > state.H - state.groundH) {
@@ -372,6 +428,8 @@
       return;
     }
     for (const cab of cabs) {
+      if (cab.x > bird.x + r + 8) break;
+      if (cab.x + cab.w < bird.x - r) continue;
       if (hitsCab(cab, bird.x, bird.y, r)) {
         gameOver();
         return;
@@ -379,17 +437,127 @@
     }
   }
 
+  function makeOffscreen(w, h) {
+    const dpr = state.cacheDpr || 1;
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.ceil(w * dpr));
+    c.height = Math.max(1, Math.ceil(h * dpr));
+    const cctx = c.getContext("2d");
+    cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cctx.imageSmoothingEnabled = !state.simple;
+    return { canvas: c, ctx: cctx };
+  }
+
+  function ensureCabCache(cab) {
+    if (cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w) return;
+    const topH = cab.gapY;
+    const botH = Math.max(1, state.H - (cab.gapY + cab.gapH));
+    const origX = cab.x;
+    cab.x = 0;
+    const prev = gfx;
+
+    const top = makeOffscreen(cab.w, topH + CACHE_PAD);
+    gfx = top.ctx;
+    drawColumn(cab, 0, topH, true);
+
+    const bot = makeOffscreen(cab.w, botH);
+    gfx = bot.ctx;
+    drawColumn(cab, 0, botH, false);
+
+    gfx = prev;
+    cab.x = origX;
+    cab.cache = {
+      top: top.canvas,
+      bot: bot.canvas,
+      topH,
+      botH,
+      pad: CACHE_PAD,
+      H: state.H,
+      w: cab.w,
+    };
+    trimCaches();
+  }
+
+  function trimCaches() {
+    const max = qcfg().maxCache;
+    const lists = prepared ? [cabs, prepared] : [cabs];
+    const held = [];
+    for (let L = 0; L < lists.length; L++) {
+      const list = lists[L];
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].cache) held.push(list[i]);
+      }
+    }
+    if (held.length <= max) return;
+    held.sort((a, b) => a.x - b.x);
+    while (held.length > max) {
+      const passed = held[0].x + held[0].w < 0 ? held.shift() : held.pop();
+      passed.cache = null;
+    }
+  }
+
+  function cacheHorizon() {
+    const q = qcfg();
+    return state.W + (state.mode === "play" ? q.horizonPlay : q.horizonPrep);
+  }
+
+  function warmList(list, budget, horizon) {
+    if (!list) return;
+    let left = budget;
+    for (let i = 0; i < list.length; i++) {
+      if (left <= 0) return;
+      const cab = list[i];
+      if (cab.x > horizon) return;
+      if (cab.x + cab.w < -80) {
+        cab.cache = null;
+        continue;
+      }
+      if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
+        ensureCabCache(cab);
+        left -= 1;
+      }
+    }
+  }
+
+  function warmUpcoming(allNear) {
+    const q = qcfg();
+    warmList(cabs, allNear ? q.warmStart : q.warmPlay, cacheHorizon());
+  }
+
+  function warmPrepared(n) {
+    warmList(prepared, n, cacheHorizon());
+  }
+
+  function idleWarm() {
+    const ric = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 40));
+    const step = () => {
+      const list = state.mode === "play" ? cabs : prepared;
+      if (!list || !list.length) return;
+      warmList(list, qcfg().warmPlay, cacheHorizon());
+      const pending = list.some(
+        (cab) => cab.x <= cacheHorizon() && (!cab.cache || cab.cache.H !== state.H)
+      );
+      if (pending && state.mode !== "play") ric(step, { timeout: 180 });
+    };
+    ric(step, { timeout: 180 });
+  }
+
+  function invalidateCabCaches() {
+    for (let i = 0; i < cabs.length; i++) cabs[i].cache = null;
+    if (prepared) for (let i = 0; i < prepared.length; i++) prepared[i].cache = null;
+  }
+
   function roundRect(x, y, w, h, r) {
     const rad = Math.max(0, Math.min(r, w / 2, h / 2));
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x, y, w, h, rad);
+    gfx.beginPath();
+    if (gfx.roundRect) gfx.roundRect(x, y, w, h, rad);
     else {
-      ctx.moveTo(x + rad, y);
-      ctx.arcTo(x + w, y, x + w, y + h, rad);
-      ctx.arcTo(x + w, y + h, x, y + h, rad);
-      ctx.arcTo(x, y + h, x, y, rad);
-      ctx.arcTo(x, y, x + w, y, rad);
-      ctx.closePath();
+      gfx.moveTo(x + rad, y);
+      gfx.arcTo(x + w, y, x + w, y + h, rad);
+      gfx.arcTo(x + w, y + h, x, y + h, rad);
+      gfx.arcTo(x, y + h, x, y, rad);
+      gfx.arcTo(x, y, x + w, y, rad);
+      gfx.closePath();
     }
   }
 
@@ -432,75 +600,81 @@
 
   function fillFace(x, y, w, h, variant, r) {
     const m = mat(variant);
-    ctx.save();
+    if (state.simple) {
+      if (variant === "wood") gfx.fillStyle = woodPat && qcfg().oak ? woodPat : PAL.wood;
+      else if (variant === "anthra") gfx.fillStyle = "#3a4047";
+      else gfx.fillStyle = "#ece8e0";
+      if (variant === "wood" && oakPat && qcfg().oak) gfx.fillStyle = oakPat;
+      gfx.fillRect(x, y, w, h);
+      gfx.fillStyle = m.hi;
+      gfx.fillRect(x, y, 2, h);
+      return;
+    }
+    gfx.save();
     roundRect(x, y, w, h, r);
-    ctx.clip();
+    gfx.clip();
     if (variant === "wood") {
-      if (assets.oak) {
-        const tw = 110;
-        for (let yy = y; yy < y + h; yy += tw) {
-          for (let xx = x; xx < x + w; xx += tw) {
-            ctx.drawImage(assets.oak, xx, yy, tw, tw);
-          }
-        }
+      if (oakPat && qcfg().oak) {
+        gfx.fillStyle = oakPat;
+        gfx.fillRect(x, y, w, h);
       } else if (woodPat) {
-        ctx.fillStyle = woodPat;
-        ctx.fillRect(x, y, w, h);
+        gfx.fillStyle = woodPat;
+        gfx.fillRect(x, y, w, h);
       } else {
-        ctx.fillStyle = PAL.wood;
-        ctx.fillRect(x, y, w, h);
+        gfx.fillStyle = PAL.wood;
+        gfx.fillRect(x, y, w, h);
       }
-      ctx.fillStyle = "rgba(60,36,12,0.1)";
-      ctx.fillRect(x, y, w, h);
+      gfx.fillStyle = "rgba(60,36,12,0.1)";
+      gfx.fillRect(x, y, w, h);
     } else if (variant === "anthra") {
-      const g = ctx.createLinearGradient(x, y, x + w, y);
+      const g = gfx.createLinearGradient(x, y, x + w, y);
       g.addColorStop(0, "#2a2e34");
       g.addColorStop(0.45, "#41484f");
       g.addColorStop(1, "#262a2f");
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, w, h);
+      gfx.fillStyle = g;
+      gfx.fillRect(x, y, w, h);
     } else {
-      const g = ctx.createLinearGradient(x, y, x + w, y);
+      const g = gfx.createLinearGradient(x, y, x + w, y);
       g.addColorStop(0, "#ece8e0");
       g.addColorStop(0.35, "#fffcf7");
       g.addColorStop(1, "#ddd6cb");
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, w, h);
+      gfx.fillStyle = g;
+      gfx.fillRect(x, y, w, h);
     }
-    ctx.fillStyle = m.hi;
-    ctx.fillRect(x, y, 3, h);
-    ctx.fillRect(x, y, w, 2);
-    ctx.fillStyle = m.sh;
-    ctx.fillRect(x + w - 3, y, 3, h);
-    ctx.fillRect(x, y + h - 2, w, 2);
-    ctx.restore();
-    ctx.strokeStyle = m.edge;
-    ctx.lineWidth = 1.15;
+    gfx.fillStyle = m.hi;
+    gfx.fillRect(x, y, 3, h);
+    gfx.fillRect(x, y, w, 2);
+    gfx.fillStyle = m.sh;
+    gfx.fillRect(x + w - 3, y, 3, h);
+    gfx.fillRect(x, y + h - 2, w, 2);
+    gfx.restore();
+    gfx.strokeStyle = m.edge;
+    gfx.lineWidth = 1.15;
     roundRect(x, y, w, h, r);
-    ctx.stroke();
+    gfx.stroke();
   }
 
   function drawBar(x, y, len, thick, vertical, color, hi) {
     if (len < 8) return;
-    ctx.save();
+    gfx.save();
     if (vertical) {
       roundRect(x, y, thick, len, thick / 2);
-      const g = ctx.createLinearGradient(x, y, x + thick, y);
+      const g = gfx.createLinearGradient(x, y, x + thick, y);
       g.addColorStop(0, hi);
       g.addColorStop(0.45, color);
       g.addColorStop(1, color);
-      ctx.fillStyle = g;
-      ctx.fill();
+      gfx.fillStyle = g;
+      gfx.fill();
     } else {
       roundRect(x, y, len, thick, thick / 2);
-      const g = ctx.createLinearGradient(x, y, x, y + thick);
+      const g = gfx.createLinearGradient(x, y, x, y + thick);
       g.addColorStop(0, hi);
       g.addColorStop(0.45, color);
       g.addColorStop(1, color);
-      ctx.fillStyle = g;
-      ctx.fill();
+      gfx.fillStyle = g;
+      gfx.fill();
     }
-    ctx.restore();
+    gfx.restore();
   }
 
   function drawShakerDoor(x, y, w, h, variant, handleSide) {
@@ -508,12 +682,12 @@
     fillFace(x, y, w, h, variant, 3);
     const fr = Math.max(5, Math.min(9, w * 0.15));
     if (h > fr * 2 + 10 && w > fr * 2 + 8) {
-      ctx.strokeStyle = m.groove;
-      ctx.lineWidth = 1.5;
+      gfx.strokeStyle = m.groove;
+      gfx.lineWidth = 1.5;
       roundRect(x + fr, y + fr, w - fr * 2, h - fr * 2, 2);
-      ctx.stroke();
-      ctx.fillStyle = m.inner;
-      ctx.fillRect(x + fr + 1, y + fr + 1, w - fr * 2 - 2, 3);
+      gfx.stroke();
+      gfx.fillStyle = m.inner;
+      gfx.fillRect(x + fr + 1, y + fr + 1, w - fr * 2 - 2, 3);
     }
     const thick = 3.4;
     if (handleSide === "right") {
@@ -544,8 +718,8 @@
       drawShakerDoor(x + pad, y, dw, h, variant, "right");
       drawShakerDoor(x + pad + dw + gap, y, dw, h, variant, "left");
     }
-    ctx.fillStyle = "rgba(0,0,0,0.12)";
-    ctx.fillRect(x + pad + dw, y + 2, gap, h - 4);
+    gfx.fillStyle = "rgba(0,0,0,0.12)";
+    gfx.fillRect(x + pad + dw, y + 2, gap, h - 4);
   }
 
   function drawDrawer(x, y, w, h, variant) {
@@ -556,111 +730,132 @@
 
   function drawWorktop(x, y, w, th, variant) {
     const ox = 6;
-    ctx.save();
+    gfx.save();
     roundRect(x - ox, y, w + ox * 2, th, 2);
-    ctx.clip();
+    gfx.clip();
     if (variant === "anthra") {
-      const g = ctx.createLinearGradient(x, y, x, y + th);
+      const g = gfx.createLinearGradient(x, y, x, y + th);
       g.addColorStop(0, "#6a7078");
       g.addColorStop(0.5, "#3e444c");
       g.addColorStop(1, "#2a2e33");
-      ctx.fillStyle = g;
-      ctx.fillRect(x - ox, y, w + ox * 2, th);
+      gfx.fillStyle = g;
+      gfx.fillRect(x - ox, y, w + ox * 2, th);
     } else if (woodPat) {
-      ctx.fillStyle = woodPat;
-      ctx.fillRect(x - ox, y, w + ox * 2, th);
+      gfx.fillStyle = woodPat;
+      gfx.fillRect(x - ox, y, w + ox * 2, th);
     } else {
-      ctx.fillStyle = PAL.wood;
-      ctx.fillRect(x - ox, y, w + ox * 2, th);
+      gfx.fillStyle = PAL.wood;
+      gfx.fillRect(x - ox, y, w + ox * 2, th);
     }
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
-    ctx.fillRect(x - ox, y, w + ox * 2, 3);
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.fillRect(x - ox, y + th - 4, w + ox * 2, 4);
-    ctx.restore();
-    ctx.strokeStyle = "rgba(40,24,8,0.35)";
-    ctx.lineWidth = 1;
+    gfx.fillStyle = "rgba(255,255,255,0.28)";
+    gfx.fillRect(x - ox, y, w + ox * 2, 3);
+    gfx.fillStyle = "rgba(0,0,0,0.3)";
+    gfx.fillRect(x - ox, y + th - 4, w + ox * 2, 4);
+    gfx.restore();
+    gfx.strokeStyle = "rgba(40,24,8,0.35)";
+    gfx.lineWidth = 1;
     roundRect(x - ox, y, w + ox * 2, th, 2);
-    ctx.stroke();
+    gfx.stroke();
   }
 
   function drawPlinth(x, y, w, h) {
-    ctx.fillStyle = "#1a1d21";
-    ctx.fillRect(x + 5, y, w - 10, h);
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.fillRect(x + 5, y, w - 10, 2);
+    gfx.fillStyle = "#1a1d21";
+    gfx.fillRect(x + 5, y, w - 10, h);
+    gfx.fillStyle = "rgba(255,255,255,0.06)";
+    gfx.fillRect(x + 5, y, w - 10, 2);
   }
 
   function drawCornice(x, y, w, h, variant) {
     fillFace(x - 3, y, w + 6, h, variant, 1);
-    ctx.fillStyle = "rgba(0,0,0,0.16)";
-    ctx.fillRect(x - 3, y + h - 2, w + 6, 2);
+    gfx.fillStyle = "rgba(0,0,0,0.16)";
+    gfx.fillRect(x - 3, y + h - 2, w + 6, 2);
   }
 
   function drawLightRail(x, y, w) {
-    ctx.fillStyle = "#2a2d32";
-    ctx.fillRect(x + 3, y - 4, w - 6, 4);
-    const glow = ctx.createLinearGradient(x, y, x, y + 18);
+    gfx.fillStyle = "#2a2d32";
+    gfx.fillRect(x + 3, y - 4, w - 6, 4);
+    const glow = gfx.createLinearGradient(x, y, x, y + 18);
     glow.addColorStop(0, "rgba(232,196,110,0.38)");
     glow.addColorStop(1, "rgba(232,196,110,0)");
-    ctx.fillStyle = glow;
-    ctx.fillRect(x + 6, y, w - 12, 18);
+    gfx.fillStyle = glow;
+    gfx.fillRect(x + 6, y, w - 12, 18);
   }
 
   function drawShelfBits(x, y, w) {
-    ctx.fillStyle = "rgba(255,252,247,0.7)";
-    ctx.beginPath();
-    ctx.ellipse(x + w * 0.3, y, Math.min(11, w * 0.14), 3.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(80,70,60,0.35)";
-    ctx.stroke();
-    ctx.fillStyle = "rgba(7,78,162,0.4)";
+    gfx.fillStyle = "rgba(255,252,247,0.7)";
+    gfx.beginPath();
+    gfx.ellipse(x + w * 0.3, y, Math.min(11, w * 0.14), 3.5, 0, 0, Math.PI * 2);
+    gfx.fill();
+    gfx.strokeStyle = "rgba(80,70,60,0.35)";
+    gfx.stroke();
+    gfx.fillStyle = "rgba(7,78,162,0.4)";
     roundRect(x + w * 0.62, y - 11, 7, 12, 1.5);
-    ctx.fill();
+    gfx.fill();
   }
 
   function drawOpenCarcass(x, y, w, h, variant) {
     const t = Math.max(8, w * 0.12);
     fillFace(x, y, w, h, variant, 4);
     const ih = Math.max(6, h - t * 2);
-    ctx.save();
+    gfx.save();
     roundRect(x + t, y + t, w - t * 2, ih, 2);
-    ctx.clip();
-    ctx.fillStyle = "#d7cbb6";
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "rgba(0,0,0,0.14)";
-    ctx.fillRect(x + t, y + t, 5, ih);
+    gfx.clip();
+    gfx.fillStyle = "#d7cbb6";
+    gfx.fillRect(x, y, w, h);
+    gfx.fillStyle = "rgba(0,0,0,0.14)";
+    gfx.fillRect(x + t, y + t, 5, ih);
     const shelves = Math.max(1, Math.floor(ih / 40));
     for (let i = 1; i <= shelves; i++) {
       const sy = y + t + (ih * i) / (shelves + 1);
-      ctx.fillStyle = variant === "wood" ? "rgba(90,55,22,0.4)" : "rgba(40,40,40,0.22)";
-      ctx.fillRect(x + t, sy, w - t * 2, 4);
+      gfx.fillStyle = variant === "wood" ? "rgba(90,55,22,0.4)" : "rgba(40,40,40,0.22)";
+      gfx.fillRect(x + t, sy, w - t * 2, 4);
       drawShelfBits(x + t, sy - 2, w - t * 2);
     }
-    ctx.restore();
-    ctx.strokeStyle = "rgba(0,0,0,0.22)";
-    ctx.lineWidth = 1.1;
+    gfx.restore();
+    gfx.strokeStyle = "rgba(0,0,0,0.22)";
+    gfx.lineWidth = 1.1;
     roundRect(x + t, y + t, w - t * 2, ih, 2);
-    ctx.stroke();
+    gfx.stroke();
+  }
+
+  function drawColumnSimple(cab, y, h, isTop) {
+    const { x, w, variant } = cab;
+    if (h < 8) return;
+    const m = mat(variant);
+    gfx.fillStyle = m.side;
+    gfx.fillRect(x + w - 5, y, 5, h);
+    fillFace(x, y, w - 5, h, variant, 2);
+    gfx.fillStyle = m.handle;
+    if (isTop) gfx.fillRect(x + w - 13, y + 8, 3, Math.max(10, h - 16));
+    else {
+      gfx.fillStyle = variant === "anthra" ? "#3e444c" : PAL.wood;
+      gfx.fillRect(x - 2, y, w + 1, 8);
+      gfx.fillStyle = m.handle;
+      gfx.fillRect(x + 8, y + 14, w - 22, 3);
+    }
   }
 
   function drawColumn(cab, y, h, isTop) {
+    if (state.simple) {
+      drawColumnSimple(cab, y, h, isTop);
+      return;
+    }
     const { x, w, variant, kind } = cab;
     if (h < 8) return;
     const depth = Math.max(7, w * 0.1);
     const frontW = w - depth;
 
-    ctx.fillStyle = "rgba(20,24,30,0.2)";
-    ctx.fillRect(x + 6, y + 8, w, Math.max(0, h - 4));
+    gfx.fillStyle = "rgba(20,24,30,0.2)";
+    gfx.fillRect(x + 6, y + 8, w, Math.max(0, h - 4));
 
-    ctx.fillStyle = mat(variant).side;
-    ctx.beginPath();
-    ctx.moveTo(x + frontW, y);
-    ctx.lineTo(x + w, y + 6);
-    ctx.lineTo(x + w, y + h + 6);
-    ctx.lineTo(x + frontW, y + h);
-    ctx.closePath();
-    ctx.fill();
+    gfx.fillStyle = mat(variant).side;
+    gfx.beginPath();
+    gfx.moveTo(x + frontW, y);
+    gfx.lineTo(x + w, y + 6);
+    gfx.lineTo(x + w, y + h + 6);
+    gfx.lineTo(x + frontW, y + h);
+    gfx.closePath();
+    gfx.fill();
 
     if (kind === "frame") {
       drawOpenCarcass(x, y, frontW, h, variant);
@@ -711,6 +906,12 @@
   }
 
   function drawCabinet(cab) {
+    if (cab.x + cab.w < -8 || cab.x > state.W + 8) return;
+    if (cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w) {
+      gfx.drawImage(cab.cache.top, cab.x, 0, cab.w, cab.cache.topH + cab.cache.pad);
+      gfx.drawImage(cab.cache.bot, cab.x, cab.gapY + cab.gapH, cab.w, cab.cache.botH);
+      return;
+    }
     const topH = cab.gapY;
     const botY = cab.gapY + cab.gapH;
     const botH = state.H - botY;
@@ -720,56 +921,56 @@
 
   function drawWorld() {
     const { W, H, ceilH, groundH } = state;
-    const wall = ctx.createLinearGradient(0, 0, 0, H);
-    wall.addColorStop(0, "#f5efe5");
-    wall.addColorStop(1, "#e6d9c4");
-    ctx.fillStyle = wall;
-    ctx.fillRect(0, 0, W, H);
+    gfx.fillStyle = wallGrad || "#e6d9c4";
+    gfx.fillRect(0, 0, W, H);
 
-    const far = state.bgX * 0.22;
-    ctx.globalAlpha = 0.16;
-    ctx.fillStyle = PAL.navyDeep;
-    for (let i = 0; i < 8; i++) {
-      const fx = ((i * 96 - far) % (W + 200)) - 50;
-      const topH = 52 + (i % 3) * 18;
-      roundRect(fx, ceilH + 14, 58, topH, 2);
-      ctx.fill();
-      const botH = 64 + (i % 2) * 22;
-      roundRect(fx + 8, H - groundH - botH, 62, botH, 2);
-      ctx.fill();
-      ctx.fillRect(fx + 5, H - groundH - botH - 6, 68, 6);
+    const q = qcfg();
+    if (q.farBg) {
+      const far = state.bgX * 0.22;
+      gfx.globalAlpha = 0.16;
+      gfx.fillStyle = PAL.navyDeep;
+      for (let i = 0; i < 8; i++) {
+        const fx = ((i * 96 - far) % (W + 200)) - 50;
+        const topH = 52 + (i % 3) * 18;
+        roundRect(fx, ceilH + 14, 58, topH, 2);
+        gfx.fill();
+        const botH = 64 + (i % 2) * 22;
+        roundRect(fx + 8, H - groundH - botH, 62, botH, 2);
+        gfx.fill();
+        gfx.fillRect(fx + 5, H - groundH - botH - 6, 68, 6);
+      }
+      gfx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 
-    for (const cab of cabs) drawCabinet(cab);
+    const overlayOn = !overlay.classList.contains("is-off");
+    if (!overlayOn || q.farBg) {
+      for (const cab of cabs) drawCabinet(cab);
+    }
 
-    ctx.fillStyle = PAL.navyDeep;
-    ctx.fillRect(0, 0, W, ceilH);
-    ctx.fillStyle = PAL.navy;
-    ctx.fillRect(0, ceilH - 4, W, 3);
-    ctx.fillStyle = PAL.gold;
-    ctx.fillRect(0, ceilH - 1, W, 1.5);
+    gfx.fillStyle = PAL.navyDeep;
+    gfx.fillRect(0, 0, W, ceilH);
+    gfx.fillStyle = PAL.navy;
+    gfx.fillRect(0, ceilH - 4, W, 3);
+    gfx.fillStyle = PAL.gold;
+    gfx.fillRect(0, ceilH - 1, W, 1.5);
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, H - groundH, W, groundH);
-    ctx.clip();
     if (woodPat) {
-      ctx.fillStyle = woodPat;
-      ctx.fillRect(0, H - groundH, W, groundH);
+      gfx.fillStyle = woodPat;
+      gfx.fillRect(0, H - groundH, W, groundH);
     } else {
-      ctx.fillStyle = PAL.wood;
-      ctx.fillRect(0, H - groundH, W, groundH);
+      gfx.fillStyle = PAL.wood;
+      gfx.fillRect(0, H - groundH, W, groundH);
     }
-    ctx.fillStyle = "rgba(0,0,0,0.08)";
-    for (let i = 0; i < 6; i++) {
-      ctx.fillRect(0, H - groundH + 10 + i * 10, W, 1);
+    if (!state.simple) {
+      gfx.fillStyle = "rgba(0,0,0,0.08)";
+      for (let i = 0; i < 6; i++) {
+        gfx.fillRect(0, H - groundH + 10 + i * 10, W, 1);
+      }
     }
-    ctx.restore();
-    ctx.fillStyle = PAL.anthra;
-    ctx.fillRect(0, H - groundH, W, 7);
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.fillRect(0, H - groundH + 1, W, 1);
+    gfx.fillStyle = PAL.anthra;
+    gfx.fillRect(0, H - groundH, W, 7);
+    gfx.fillStyle = "rgba(255,255,255,0.18)";
+    gfx.fillRect(0, H - groundH + 1, W, 1);
   }
 
   function drawBird() {
@@ -811,8 +1012,9 @@
   }
 
   function draw() {
+    gfx = ctx;
     ctx.save();
-    if (state.shake > 0) {
+    if (state.shake > 0 && qcfg().shake) {
       ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
     }
     drawWorld();
@@ -825,11 +1027,36 @@
     ctx.restore();
   }
 
+  function setQuality(level) {
+    if (level === state.quality) return;
+    state.quality = level;
+    frameSamples.length = 0;
+    layout();
+    warmUpcoming(false);
+  }
+
+  function noteFrame(dtMs) {
+    if (state.mode !== "play") return;
+    frameSamples.push(dtMs);
+    if (frameSamples.length < 24) return;
+    const sorted = frameSamples.slice().sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(sorted.length * 0.95)];
+    frameSamples.length = 0;
+    if (J.shouldDowngrade(p95) && state.quality !== "low") {
+      setQuality(J.nextQuality(state.quality));
+    }
+  }
+
   function frame(now) {
     const dt = Math.min(0.05, (now - (state.last || now)) / 1000);
     state.last = now;
     update(dt);
-    draw();
+    const minDraw = 1000 / qcfg().fps;
+    if (!state.lastDraw || now - state.lastDraw >= minDraw - 0.5) {
+      draw();
+      state.lastDraw = now;
+    }
+    noteFrame(dt * 1000);
     requestAnimationFrame(frame);
   }
 
@@ -850,9 +1077,13 @@
     });
   }
 
-  function onPointer(e) {
+  let lastInputAt = 0;
+  function onInput(e) {
     if (e.target.closest("a, button")) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
+    const t = typeof e.timeStamp === "number" && e.timeStamp > 0 ? e.timeStamp : performance.now();
+    if (J.isDuplicateInput(lastInputAt, t)) return;
+    lastInputAt = t;
     flap();
   }
 
@@ -887,22 +1118,37 @@
       assets.wood = wood;
       assets.oak = oak;
       woodPat = ctx.createPattern(wood, "repeat");
+      const oakTile = document.createElement("canvas");
+      oakTile.width = 110;
+      oakTile.height = 110;
+      oakTile.getContext("2d").drawImage(oak, 0, 0, 110, 110);
+      oakPat = ctx.createPattern(oakTile, "repeat");
       assets.ready = true;
+      invalidateCabCaches();
+      if (!prepared) prepareLevel();
+      warmUpcoming(true);
+      warmPrepared(qcfg().warmStart);
+      idleWarm();
     } catch (err) {
       assets.ready = false;
     }
   }
 
   function onResize() {
+    const { W, H } = viewSize();
+    if (J.shouldIgnoreResize(state.W, state.H, W, H)) return;
     const yRatio = bird.y / (state.H || 1);
     layout();
     bird.y = yRatio * state.H;
+    if (state.mode === "play") warmUpcoming(false);
+    else {
+      if (!prepared) prepareLevel();
+      warmPrepared(qcfg().warmStart);
+    }
   }
   window.addEventListener("resize", onResize);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", onResize);
-  }
-  window.addEventListener("pointerdown", onPointer, { passive: false });
+  window.addEventListener("pointerdown", onInput, { passive: false });
+  window.addEventListener("touchstart", onInput, { passive: false });
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space" || e.code === "ArrowUp") {
       e.preventDefault();
@@ -943,12 +1189,21 @@
       kind: c.kind,
       variant: c.variant,
       scored: c.scored,
+      idx: c.idx,
+      cached: !!c.cache,
     })),
+    prepared: prepared ? prepared.length : 0,
+    quality: state.quality,
+    dpr: state.drawDpr,
+    simple: !!state.simple,
+    canvasW: canvas.width,
+    canvasH: canvas.height,
   });
 
   layout();
   bootUI();
   resetWorld(true);
+  prepareLevel();
   loadAssets();
   requestAnimationFrame(frame);
 })();

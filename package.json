@@ -1,5 +1,8 @@
 {
   "name": "hagrobird",
   "private": true,
-  "description": "HagroBird — Hagro wachtspelletje"
+  "description": "HagroBird — Hagro wachtspelletje",
+  "scripts": {
+    "test": "node test-jump.js"
+  }
 }
