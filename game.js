@@ -125,8 +125,11 @@
       saveData: !!(navigator.connection && navigator.connection.saveData),
     }),
     lastDraw: 0,
+    qualityGraceUntil: 0,
+    badWindows: 0,
   };
   const frameSamples = [];
+  const DRAW_SAMPLES = 90;
 
   const bird = {
     x: 110,
@@ -257,7 +260,10 @@
     bird.vy = -400 * state.vu;
     sfx.flap();
     puff(bird.x - 8, bird.y + 10, 6, PAL.white);
-    warmUpcoming(true);
+    state.qualityGraceUntil = performance.now() + 1800;
+    state.badWindows = 0;
+    frameSamples.length = 0;
+    warmVisible(1);
   }
 
   function gameOver() {
@@ -401,8 +407,12 @@
         cab.scored = true;
         state.score += 1;
         scoreEl.textContent = String(state.score);
-        sfx.point();
-        puff(bird.x + 16, bird.y, 7, PAL.gold);
+        const px = bird.x + 16;
+        const py = bird.y;
+        requestAnimationFrame(() => {
+          sfx.point();
+          puff(px, py, 7, PAL.gold);
+        });
       }
     }
     while (cabs.length && cabs[0].x + cabs[0].w < -80) {
@@ -420,7 +430,6 @@
       const idx = last.idx + 1;
       cabs.push(spawnCab(last.x + difficulty(idx).spacing, last, idx));
     }
-    warmUpcoming(false);
 
     const r = bird.size * 0.24;
     if (bird.y - r < state.ceilH || bird.y + r > state.H - state.groundH) {
@@ -522,6 +531,38 @@
   function warmUpcoming(allNear) {
     const q = qcfg();
     warmList(cabs, allNear ? q.warmStart : q.warmPlay, cacheHorizon());
+  }
+
+  function warmVisible(maxN) {
+    let n = 0;
+    for (let i = 0; i < cabs.length && n < maxN; i++) {
+      const cab = cabs[i];
+      if (cab.x > state.W + 48) break;
+      if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
+        ensureCabCache(cab);
+        n += 1;
+      }
+    }
+  }
+
+  function warmWithBudget(ms) {
+    const list = state.mode === "play" ? cabs : prepared;
+    if (!list || !list.length) return;
+    const t0 = performance.now();
+    const horizon = cacheHorizon();
+    for (let i = 0; i < list.length; i++) {
+      if (performance.now() - t0 >= ms) return;
+      const cab = list[i];
+      if (cab.x > horizon) return;
+      if (cab.x + cab.w < -80) {
+        cab.cache = null;
+        continue;
+      }
+      if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
+        ensureCabCache(cab);
+        return;
+      }
+    }
   }
 
   function warmPrepared(n) {
@@ -907,6 +948,9 @@
 
   function drawCabinet(cab) {
     if (cab.x + cab.w < -8 || cab.x > state.W + 8) return;
+    if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
+      ensureCabCache(cab);
+    }
     if (cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w) {
       gfx.drawImage(cab.cache.top, cab.x, 0, cab.w, cab.cache.topH + cab.cache.pad);
       gfx.drawImage(cab.cache.bot, cab.x, cab.gapY + cab.gapH, cab.w, cab.cache.botH);
@@ -1030,20 +1074,33 @@
   function setQuality(level) {
     if (level === state.quality) return;
     state.quality = level;
+    state.simple = qcfg().simple;
     frameSamples.length = 0;
-    layout();
-    warmUpcoming(false);
+    state.badWindows = 0;
+    state.qualityGraceUntil = performance.now() + 1500;
   }
 
-  function noteFrame(dtMs) {
+  function noteDraw(drawMs) {
     if (state.mode !== "play") return;
-    frameSamples.push(dtMs);
-    if (frameSamples.length < 24) return;
+    if (performance.now() < state.qualityGraceUntil) return;
+    frameSamples.push(drawMs);
+    if (frameSamples.length < DRAW_SAMPLES) return;
     const sorted = frameSamples.slice().sort((a, b) => a - b);
-    const p95 = sorted[Math.floor(sorted.length * 0.95)];
+    const stats = {
+      median: sorted[Math.floor(sorted.length / 2)],
+      p95: sorted[Math.floor(sorted.length * 0.95)],
+    };
     frameSamples.length = 0;
-    if (J.shouldDowngrade(p95) && state.quality !== "low") {
-      setQuality(J.nextQuality(state.quality));
+    if (J.shouldDowngrade(stats)) {
+      state.badWindows += 1;
+      if (state.badWindows >= 2 && state.quality !== "low") {
+        setQuality(J.nextQuality(state.quality));
+      }
+    } else {
+      state.badWindows = 0;
+      if (J.shouldUpgrade(stats) && state.quality !== "high") {
+        setQuality(J.prevQuality(state.quality));
+      }
     }
   }
 
@@ -1052,11 +1109,17 @@
     state.last = now;
     update(dt);
     const minDraw = 1000 / qcfg().fps;
-    if (!state.lastDraw || now - state.lastDraw >= minDraw - 0.5) {
+    const due = !state.lastDraw || now - state.lastDraw >= minDraw - 0.5;
+    if (due) {
+      const t0 = performance.now();
       draw();
+      const drawMs = performance.now() - t0;
       state.lastDraw = now;
+      noteDraw(drawMs);
+      if (drawMs < 10) warmWithBudget(3);
+    } else {
+      warmWithBudget(4);
     }
-    noteFrame(dt * 1000);
     requestAnimationFrame(frame);
   }
 

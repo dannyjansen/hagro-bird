@@ -39,12 +39,14 @@ test("low-memory and save-data phones start on low quality", () => {
   assert.equal(J.pickStartQuality({}), "high");
 });
 
-test("frame-time p95 above 26ms drops one quality step", () => {
-  assert.equal(J.shouldDowngrade(16.7), false);
-  assert.equal(J.shouldDowngrade(27), true);
+test("brief spikes do not drop quality, sustained 50fps does", () => {
+  assert.equal(J.shouldDowngrade({ median: 16.7, p95: 27 }), false);
+  assert.equal(J.shouldDowngrade({ median: 16.7, p95: 16.8 }), false);
+  assert.equal(J.shouldDowngrade({ median: 21, p95: 30 }), true);
+  assert.equal(J.shouldUpgrade({ median: 12, p95: 16 }), true);
+  assert.equal(J.shouldUpgrade({ median: 17, p95: 20 }), false);
   assert.equal(J.nextQuality("high"), "mid");
-  assert.equal(J.nextQuality("mid"), "low");
-  assert.equal(J.nextQuality("low"), "low");
+  assert.equal(J.prevQuality("low"), "mid");
 });
 
 test("tiny mobile viewport height jitter is ignored so a tap does not relayout", () => {
@@ -62,15 +64,17 @@ test("pointerdown and touchstart of the same tap are treated as one input", () =
   assert.equal(J.isDuplicateInput(100, 140), false);
 });
 
-test("low quality uses 1x pixels and 30fps", () => {
+test("all quality levels stay at 60fps and the same canvas resolution", () => {
   const low = J.qualityConfig("low");
+  const mid = J.qualityConfig("mid");
   const high = J.qualityConfig("high");
-  assert.ok(low.dprCap <= 1);
-  assert.equal(low.fps, 30);
-  assert.equal(low.simple, true);
-  assert.ok(low.maxCache < high.maxCache);
-  assert.ok(high.dprCap >= 1.5);
   assert.equal(high.fps, 60);
+  assert.equal(mid.fps, 60);
+  assert.equal(low.fps, 60);
+  assert.equal(mid.dprCap, high.dprCap);
+  assert.equal(low.dprCap, high.dprCap);
+  assert.equal(low.simple, true);
+  assert.equal(high.simple, false);
 });
 
 test("difficulty ramps speed up and gap/spacing down", () => {

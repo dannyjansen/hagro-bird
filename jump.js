@@ -18,7 +18,7 @@
   const QUALITY = {
     high: {
       dprCap: 2,
-      cacheDpr: 2,
+      cacheDpr: 1,
       farBg: true,
       particles: 1,
       shake: true,
@@ -32,33 +32,33 @@
       oak: true,
     },
     mid: {
-      dprCap: 1.25,
+      dprCap: 2,
       cacheDpr: 1,
       farBg: false,
       particles: 0.35,
       shake: false,
       simple: false,
       fps: 60,
-      maxCache: 5,
+      maxCache: 6,
       warmStart: 3,
       warmPlay: 1,
-      horizonPlay: 500,
-      horizonPrep: 800,
+      horizonPlay: 520,
+      horizonPrep: 900,
       oak: true,
     },
     low: {
-      dprCap: 1,
+      dprCap: 2,
       cacheDpr: 1,
       farBg: false,
       particles: 0,
       shake: false,
       simple: true,
-      fps: 30,
-      maxCache: 4,
+      fps: 60,
+      maxCache: 5,
       warmStart: 2,
       warmPlay: 1,
-      horizonPlay: 400,
-      horizonPrep: 520,
+      horizonPlay: 420,
+      horizonPrep: 600,
       oak: false,
     },
   };
@@ -75,14 +75,26 @@
     return "high";
   }
 
-  function shouldDowngrade(p95) {
-    return p95 > 26;
+  function shouldDowngrade(stats) {
+    if (!stats || typeof stats !== "object") return false;
+    return stats.median > 19 && stats.p95 > 28;
+  }
+
+  function shouldUpgrade(stats) {
+    if (!stats || typeof stats !== "object") return false;
+    return stats.median < 14 && stats.p95 < 18;
   }
 
   function nextQuality(cur) {
     if (cur === "high") return "mid";
     if (cur === "mid") return "low";
     return "low";
+  }
+
+  function prevQuality(cur) {
+    if (cur === "low") return "mid";
+    if (cur === "mid") return "high";
+    return "high";
   }
 
   function shouldIgnoreResize(prevW, prevH, nextW, nextH) {
@@ -266,7 +278,9 @@
     qualityConfig,
     pickStartQuality,
     shouldDowngrade,
+    shouldUpgrade,
     nextQuality,
+    prevQuality,
     shouldIgnoreResize,
     isDuplicateInput,
     clamp,
