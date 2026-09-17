@@ -3,6 +3,13 @@
   "private": true,
   "description": "HagroBird — Hagro wachtspelletje",
   "scripts": {
-    "test": "node test-jump.js"
+    "test": "node test-jump.js && node test-auth.mjs",
+    "dev": "wrangler d1 migrations apply DB --local && wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "check": "npm test && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.120.0"
   }
 }
