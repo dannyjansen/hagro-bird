@@ -75,6 +75,7 @@
   const canvasPool = [];
   const bitPool = [];
   const CACHE_PAD = 22;
+  let cacheWarmPending = false;
   let lastDrawMs = 0;
   let lastFps = 0;
   let fpsFrames = 0;
@@ -325,7 +326,7 @@
     state.qualityGraceUntil = performance.now() + 1800;
     state.badWindows = 0;
     frameSamples.length = 0;
-    warmFirst(cabs, 1);
+    scheduleCacheWarm();
   }
 
   function gameOver() {
@@ -504,6 +505,7 @@
     }
     recyclePassed();
     ensureLive();
+    scheduleCacheWarm();
 
     if (performance.now() < (state.spawnUntil || 0)) return;
 
@@ -594,37 +596,57 @@
     }
   }
 
-  function warmWithBudget(ms) {
+  function nextCacheCandidate() {
     const list = state.mode === "play" ? cabs : prepared;
-    if (!list || !list.length) return;
-    const t0 = performance.now();
-    for (let i = 0; i < list.length; i++) {
-      if (performance.now() - t0 >= ms) return;
-      const cab = list[i];
-      if (!cacheReady(cab)) {
-        ensureCabCache(cab);
-        return;
+    if (list && list.length) {
+      const limit = state.mode === "play" ? list.length : Math.min(list.length, J.LIVE + qcfg().warmStart);
+      for (let i = 0; i < limit; i++) {
+        if (!cacheReady(list[i])) return list[i];
       }
+    }
+
+    // Prepare a few cabinets ahead of the live window without retaining every
+    // generated cabinet in memory. The course objects are safe to warm before
+    // activation because cache rendering temporarily uses x = 0.
+    if (state.mode === "play" && course) {
+      const end = Math.min(course.length, courseAt + J.LIVE);
+      for (let i = courseAt; i < end; i++) {
+        if (!cacheReady(course[i])) return course[i];
+      }
+    }
+    return null;
+  }
+
+  function scheduleCacheWarm() {
+    if (cacheWarmPending || !nextCacheCandidate()) return;
+    cacheWarmPending = true;
+    const ric = window.requestIdleCallback;
+    if (typeof ric === "function") {
+      ric(runCacheWarm, { timeout: state.mode === "play" ? 500 : 250 });
+    } else {
+      window.setTimeout(() => runCacheWarm({ didTimeout: true }), 80);
     }
   }
 
+  function runCacheWarm(deadline) {
+    cacheWarmPending = false;
+    const cab = nextCacheCandidate();
+    if (!cab) return;
+    if (
+      deadline &&
+      !deadline.didTimeout &&
+      typeof deadline.timeRemaining === "function" &&
+      deadline.timeRemaining() < 8
+    ) {
+      scheduleCacheWarm();
+      return;
+    }
+    ensureCabCache(cab);
+    scheduleCacheWarm();
+  }
+
   function idleWarm() {
-    const ric = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 40));
-    const step = () => {
-      const list = state.mode === "play" ? cabs : prepared;
-      if (!list || !list.length) return;
-      warmFirst(list, qcfg().warmPlay);
-      let pending = false;
-      const n = Math.min(list.length, J.LIVE);
-      for (let i = 0; i < n; i++) {
-        if (!cacheReady(list[i])) {
-          pending = true;
-          break;
-        }
-      }
-      if (pending && state.mode !== "play") ric(step, { timeout: 180 });
-    };
-    ric(step, { timeout: 180 });
+    scheduleCacheWarm();
   }
 
   function invalidateCabCaches() {
@@ -641,6 +663,15 @@
           recycleCanvas(prepared[i].cache.top);
           recycleCanvas(prepared[i].cache.bot);
           prepared[i].cache = null;
+        }
+      }
+    }
+    if (course && course !== prepared) {
+      for (let i = 0; i < course.length; i++) {
+        if (course[i].cache) {
+          recycleCanvas(course[i].cache.top);
+          recycleCanvas(course[i].cache.bot);
+          course[i].cache = null;
         }
       }
     }
@@ -1212,10 +1243,6 @@
       const drawMs = performance.now() - t0;
       state.lastDraw = now;
       noteDraw(drawMs);
-      const leftover = 14 - drawMs;
-      if (leftover > 2) warmWithBudget(Math.min(4, leftover));
-    } else {
-      warmWithBudget(4);
     }
     requestAnimationFrame(frame);
   }
@@ -1285,9 +1312,13 @@
       oakPat = ctx.createPattern(oakTile, "repeat");
       assets.ready = true;
       invalidateCabCaches();
-      if (!prepared) prepareLevel();
-      warmFirst(prepared, qcfg().warmStart);
-      idleWarm();
+      if (state.mode === "play") {
+        scheduleCacheWarm();
+      } else {
+        if (!prepared) prepareLevel();
+        warmFirst(prepared, qcfg().warmStart);
+        idleWarm();
+      }
     } catch (err) {
       assets.ready = false;
     }
@@ -1302,11 +1333,11 @@
     else bird.y = yRatio * state.H;
     if (state.mode === "play") {
       ensureLive();
-      warmFirst(cabs, qcfg().warmPlay);
     } else {
       if (!prepared) prepareLevel();
       warmFirst(prepared, qcfg().warmStart);
     }
+    scheduleCacheWarm();
   }
   window.addEventListener("resize", onResize);
   if (window.visualViewport) {

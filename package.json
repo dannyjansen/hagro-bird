@@ -1,5 +1,6 @@
 {
   "name": "hagrobird",
+  "version": "0.0.1",
   "private": true,
   "description": "HagroBird — Hagro wachtspelletje",
   "scripts": {
