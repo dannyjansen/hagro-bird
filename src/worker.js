@@ -29,7 +29,15 @@ async function rateLimit(env, key, max) {
 }
 
 async function authSecret(env) {
-  return env.AUTH_SECRET || env.BETTER_AUTH_SECRET || "";
+  if (env.AUTH_SECRET) return env.AUTH_SECRET;
+  if (env.BETTER_AUTH_SECRET) return env.BETTER_AUTH_SECRET;
+  if (!env.DB) return "";
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'auth_secret'").first();
+  if (row && row.value) return row.value;
+  const generated = lib.randomToken() + lib.randomToken();
+  await env.DB.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('auth_secret', ?)").bind(generated).run();
+  const stored = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'auth_secret'").first();
+  return (stored && stored.value) || generated;
 }
 
 async function hash(env, value) {
@@ -39,27 +47,17 @@ async function hash(env, value) {
 }
 
 async function sendLoginEmail(env, email, name, code) {
-  const key = env.RESEND_API_KEY;
-  const from = env.EMAIL_FROM;
-  if (!key || !from) return { sent: false, reason: "not-configured" };
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + key,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [email],
-      subject: "Je HagroBird-code: " + code,
-      html: lib.loginEmailHtml(name, code),
-      text: `Je HagroBird-inlogcode is ${code}. Geldig 10 minuten.`,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(body.slice(0, 200) || "email-failed");
+  if (!env.EMAIL || typeof env.EMAIL.send !== "function") {
+    return { sent: false, reason: "not-configured" };
   }
+  const from = lib.parseFrom(env.EMAIL_FROM) || "hello@dannojustin.com";
+  await env.EMAIL.send({
+    to: email,
+    from,
+    subject: "Je HagroBird-code: " + code,
+    html: lib.loginEmailHtml(name, code),
+    text: `Je HagroBird-inlogcode is ${code}. Geldig 10 minuten.`,
+  });
   return { sent: true };
 }
 
@@ -199,7 +197,7 @@ async function handleRequest(request, env) {
       const payload = { ok: true, sent };
       if (env.DEV_RETURN_LOGIN_CODE === "1") payload.devCode = code;
       if (!sent && env.DEV_RETURN_LOGIN_CODE !== "1") {
-        return lib.error("E-mail versturen is nog niet geconfigureerd (RESEND_API_KEY / EMAIL_FROM).", 503);
+        return lib.error("E-mail versturen is nog niet geconfigureerd (Cloudflare Email).", 503);
       }
       return lib.json(payload);
     }
