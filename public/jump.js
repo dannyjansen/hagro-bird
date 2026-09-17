@@ -319,6 +319,64 @@
     };
   }
 
+  function spacingAfter(prev, vu, playH) {
+    return difficulty(prev.idx, vu, playH).spacing;
+  }
+
+  // Live cabinets scroll. Course items keep generation-time x, so activating
+  // them as-is leaves a screen-wide hole after every LIVE window. Rebase onto
+  // the current last live x (or startX if the live list is empty).
+  function placeNextCabinet(cab, prev, opts) {
+    const startX = opts.startX;
+    cab.w = opts.cabW != null ? opts.cabW : cab.w;
+    cab.x = prev ? prev.x + spacingAfter(prev, opts.vu, opts.playH) : startX;
+    return cab;
+  }
+
+  function nextCabinetX(prev, opts) {
+    if (!prev) return opts.startX;
+    return prev.x + spacingAfter(prev, opts.vu, opts.playH);
+  }
+
+  function fillLiveCabinets(live, course, courseAt, opts) {
+    const liveMax = opts.liveCount == null ? LIVE : opts.liveCount;
+    let at = courseAt;
+    while (live.length < liveMax) {
+      const last = live.length ? live[live.length - 1] : null;
+      if (course && at < course.length) {
+        live.push(placeNextCabinet(course[at++], last, opts));
+        continue;
+      }
+      const x = nextCabinetX(last, opts);
+      if (!last) {
+        const built = buildCabinets(Object.assign({}, opts, { count: liveMax, startX: x }));
+        for (let i = 0; i < built.length; i++) live.push(built[i]);
+        break;
+      }
+      live.push(makeCabinet(Object.assign({}, opts, { x, prev: last, score: last.idx + 1 })));
+    }
+    return at;
+  }
+
+  function recyclePassedCabinets(live, left) {
+    const edge = left == null ? -48 : left;
+    let n = 0;
+    while (live.length && live[0].x + live[0].w < edge) {
+      live.shift();
+      n += 1;
+    }
+    return n;
+  }
+
+  function maxLiveGap(live) {
+    let max = 0;
+    for (let i = 1; i < live.length; i++) {
+      const gap = live[i].x - live[i - 1].x;
+      if (gap > max) max = gap;
+    }
+    return max;
+  }
+
   function buildCabinets(opts) {
     const count = opts.count == null ? AHEAD : opts.count;
     const cabs = [];
@@ -365,5 +423,11 @@
     pickGapY,
     makeCabinet,
     buildCabinets,
+    spacingAfter,
+    placeNextCabinet,
+    nextCabinetX,
+    fillLiveCabinets,
+    recyclePassedCabinets,
+    maxLiveGap,
   };
 });
