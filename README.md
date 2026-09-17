@@ -32,7 +32,7 @@ Niet lokaal `wrangler deploy` naar productie. Koppel deze repo aan Cloudflare Wo
 npm test && node scripts/sync-assets.mjs && npx wrangler deploy
 ```
 
-Sprites staan in `assets/` en worden naar `public/assets` gekopieerd vóór de Worker-deploy. De huidige Vercel-site blijft de static files hosten tot die overstap; accounts vereisen de Worker + D1.
+Sprites staan in `assets/` en worden naar `public/assets` gekopieerd vóór de Worker-deploy. De huidige Vercel-site blijft de static files hosten; `vercel.json` stuurt `/api/*` door naar de Worker, zodat accounts en ranking op de bestaande game-URL werken.
 
 Cloudflare (account van Danny):
 
@@ -45,7 +45,7 @@ Geen `BETTER_AUTH` / wachtwoorden: dit spel heeft alleen e-mailcodes.
 
 ## 3. Vercel
 
-`vercel.json` blijft staan zodat een bestaande Vercel-koppeling de frontend kan blijven serveren. `/api/*` bestaat daar niet; login toont dan dat de accountserver ontbreekt. Speelbaar blijft het.
+`vercel.json` blijft staan zodat een bestaande Vercel-koppeling de frontend kan blijven serveren. `/api/*` wordt doorgezet naar `https://hagro-bird.dannyjustinjansen.workers.dev`, terwijl statische bestanden op Vercel blijven. De directe Worker-URL blijft ook beschikbaar voor controle.
 
 ## Besturing
 
