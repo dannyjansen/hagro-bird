@@ -31,6 +31,20 @@ test("prebuilds 50 cabinets", () => {
   assert.equal(J.AHEAD, 50);
 });
 
+test("live world stays small so passed cabinets can despawn", () => {
+  assert.equal(J.LIVE, 8);
+  assert.ok(J.LIVE < J.AHEAD);
+});
+
+test("phone canvas stays 2x; large desktop backing store is pixel-capped", () => {
+  assert.equal(J.backingDpr(390, 844, 3, 2), 2);
+  assert.equal(J.backingDpr(430, 932, 3, 2), 2);
+  const mac = J.backingDpr(1512, 982, 2, 2);
+  assert.ok(mac <= 1.5, "mac dpr " + mac);
+  assert.ok(mac >= 1, "mac dpr " + mac);
+  assert.equal(J.backingDpr(1512, 982, 2, 2), J.backingDpr(1512, 982, 2, J.qualityConfig("low").dprCap));
+});
+
 test("low-memory and save-data phones start on low quality", () => {
   assert.equal(J.pickStartQuality({ deviceMemory: 2 }), "low");
   assert.equal(J.pickStartQuality({ saveData: true }), "low");
