@@ -124,14 +124,19 @@ async function handleRequest(request, env) {
 
     if (path.startsWith("/api/avatar/") && request.method === "GET") {
       const id = decodeURIComponent(path.slice("/api/avatar/".length));
-      const row = await env.DB.prepare("SELECT avatar, avatar_type FROM users WHERE id = ?")
+      // D1 Worker rows drop BLOB bytes (empty 200 image/jpeg). hex() comes back as text.
+      const row = await env.DB.prepare(
+        "SELECT avatar_type, hex(avatar) AS avatar_hex FROM users WHERE id = ?"
+      )
         .bind(id)
         .first();
-      if (!row || !row.avatar) return new Response("Not found", { status: 404 });
-      return new Response(row.avatar, {
+      const decoded = lib.decodeStoredAvatar(row);
+      if (!decoded) return new Response("Not found", { status: 404 });
+      return new Response(decoded.bytes, {
         headers: {
-          "Content-Type": row.avatar_type || "image/jpeg",
+          "Content-Type": decoded.type,
           "Cache-Control": "public, max-age=300",
+          "X-Content-Type-Options": "nosniff",
         },
       });
     }
