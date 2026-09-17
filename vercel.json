@@ -1,6 +1,12 @@
 {
   "buildCommand": "mkdir -p public/assets && cp -a assets/. public/assets && echo public",
   "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://hagro-bird.dannyjustinjansen.workers.dev/api/:path*"
+    }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
