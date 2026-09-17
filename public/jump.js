@@ -108,6 +108,36 @@
     return nextTs - prevTs < 12;
   }
 
+  function eventElement(target) {
+    if (!target) return null;
+    if (target.nodeType === 1) return target;
+    return target.parentElement || null;
+  }
+
+  function isUiControl(target) {
+    const el = eventElement(target);
+    if (!el || typeof el.closest !== "function") return false;
+    return !!el.closest("a, button, input, textarea, select, label, option, [data-ui]");
+  }
+
+  function prefersPointerEvents(globalObj) {
+    const g = globalObj || (typeof globalThis !== "undefined" ? globalThis : null);
+    return !!(g && typeof g.PointerEvent === "function");
+  }
+
+  function viewSizeFrom(win) {
+    const w = win || (typeof globalThis !== "undefined" ? globalThis : null);
+    if (!w) return { W: 1, H: 1 };
+    const vv = w.visualViewport;
+    const doc = w.document && w.document.documentElement;
+    const width = (vv && vv.width) || w.innerWidth || (doc && doc.clientWidth) || 1;
+    const height = (vv && vv.height) || w.innerHeight || (doc && doc.clientHeight) || 1;
+    return {
+      W: Math.max(1, Math.round(width)),
+      H: Math.max(1, Math.round(height)),
+    };
+  }
+
   function clamp(n, a, b) {
     return Math.max(a, Math.min(b, n));
   }
@@ -283,6 +313,10 @@
     prevQuality,
     shouldIgnoreResize,
     isDuplicateInput,
+    eventElement,
+    isUiControl,
+    prefersPointerEvents,
+    viewSizeFrom,
     clamp,
     lerp,
     difficulty,

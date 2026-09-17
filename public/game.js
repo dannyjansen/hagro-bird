@@ -41,9 +41,9 @@
   const PHYS = J.PHYS;
 
   const canvas = document.getElementById("game");
-  const ctx =
-    canvas.getContext("2d", { alpha: false, desynchronized: true }) ||
-    canvas.getContext("2d", { alpha: false });
+  // Avoid desynchronized 2D contexts: on several Android Chrome/WebView GPUs the
+  // canvas presents as a black/frozen surface even though iOS draws fine.
+  const ctx = canvas.getContext("2d", { alpha: false });
   let gfx = ctx;
   const overlay = document.getElementById("overlay");
   const hud = document.getElementById("hud");
@@ -154,9 +154,7 @@
   }
 
   function viewSize() {
-    const W = Math.max(1, Math.round(window.innerWidth || 1));
-    const H = Math.max(1, Math.round(window.innerHeight || 1));
-    return { W, H };
+    return J.viewSizeFrom(window);
   }
 
   function qcfg() {
@@ -280,6 +278,7 @@
       storeSet(STORE_HI, String(state.hi));
       hiEl.textContent = String(state.hi);
     }
+    if (window.HagroAccount) window.HagroAccount.submitScore(state.score);
     titleEl.textContent = "HagroBird";
     resultEl.hidden = false;
     resultEl.innerHTML = best
@@ -1142,7 +1141,7 @@
 
   let lastInputAt = 0;
   function onInput(e) {
-    if (e.target.closest("a, button")) return;
+    if (J.isUiControl(e.target)) return;
     if (e.cancelable) e.preventDefault();
     const t = typeof e.timeStamp === "number" && e.timeStamp > 0 ? e.timeStamp : performance.now();
     if (J.isDuplicateInput(lastInputAt, t)) return;
@@ -1210,8 +1209,18 @@
     }
   }
   window.addEventListener("resize", onResize);
-  window.addEventListener("pointerdown", onInput, { passive: false });
-  window.addEventListener("touchstart", onInput, { passive: false });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onResize);
+  }
+  // Android Chrome fires pointerdown and a later touchstart for the same tap.
+  // Listening to both double-flaps every press. Pointer events alone are enough
+  // on current Android/iOS; touch+mouse is only a fallback.
+  if (J.prefersPointerEvents(window)) {
+    window.addEventListener("pointerdown", onInput, { passive: false });
+  } else {
+    window.addEventListener("touchstart", onInput, { passive: false });
+    window.addEventListener("mousedown", onInput, { passive: false });
+  }
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space" || e.code === "ArrowUp") {
       e.preventDefault();
@@ -1233,6 +1242,16 @@
     });
   });
   document.querySelector(".site").addEventListener("pointerdown", (e) => e.stopPropagation());
+  function onCta(e) {
+    e.stopPropagation();
+    if (e.cancelable) e.preventDefault();
+    const t = typeof e.timeStamp === "number" && e.timeStamp > 0 ? e.timeStamp : performance.now();
+    if (J.isDuplicateInput(lastInputAt, t)) return;
+    lastInputAt = t;
+    flap();
+  }
+  if (J.prefersPointerEvents(window)) ctaEl.addEventListener("pointerdown", onCta);
+  else ctaEl.addEventListener("click", onCta);
 
   window.__hagrobird = () => ({
     mode: state.mode,

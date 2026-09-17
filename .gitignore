@@ -2,3 +2,6 @@
 .DS_Store
 node_modules
 tmp-verify
+.dev.vars
+.wrangler
+public/assets
