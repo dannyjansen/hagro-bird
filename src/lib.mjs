@@ -140,6 +140,18 @@ function shouldRankScore(user, score) {
   return Number.isInteger(n) && n >= 1 && n <= 9999;
 }
 
+function accountExists(row) {
+  return !!(row && row.id);
+}
+
+function needsSignupName(existing, name) {
+  return !accountExists(existing) && !normalizeName(name);
+}
+
+function showSignupNameField(exists) {
+  return !exists;
+}
+
 function parseFrom(value) {
   const raw = String(value || "").trim();
   const angled = /^(.*)<([^>]+)>\s*$/.exec(raw);
@@ -194,6 +206,9 @@ export {
   parseDataUrl,
   publicUser,
   shouldRankScore,
+  accountExists,
+  needsSignupName,
+  showSignupNameField,
   parseFrom,
   loginEmailHtml,
   escapeHtml,

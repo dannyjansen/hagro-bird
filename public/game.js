@@ -280,29 +280,15 @@
     }
   }
 
-  function takeCourseCab() {
-    if (course && courseAt < course.length) return course[courseAt++];
-    return null;
-  }
-
   function ensureLive() {
-    while (cabs.length < J.LIVE) {
-      const next = takeCourseCab();
-      if (next) {
-        next.w = state.cabW;
-        cabs.push(next);
-        continue;
-      }
-      const last = cabs[cabs.length - 1];
-      if (!last) {
-        const built = J.buildCabinets(
-          Object.assign(layoutOpts(), { count: J.LIVE, startX: state.W + 36 })
-        );
-        for (let i = 0; i < built.length; i++) cabs.push(built[i]);
-        break;
-      }
-      const idx = last.idx + 1;
-      cabs.push(spawnCab(last.x + difficulty(idx).spacing, last, idx));
+    const opts = Object.assign(layoutOpts(), { startX: state.W + 36, liveCount: J.LIVE });
+    const before = cabs.length;
+    courseAt = J.fillLiveCabinets(cabs, course, courseAt, opts);
+    // Course items keep generation-time x. fillLiveCabinets rebases each
+    // activation onto the current last live x so the next column is already
+    // approaching when an earlier one leaves.
+    if (cabs.length > before) {
+      for (let i = before; i < cabs.length; i++) cabs[i].w = state.cabW;
     }
   }
 

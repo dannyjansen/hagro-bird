@@ -11,6 +11,9 @@ import {
   escapeHtml,
   parseFrom,
   shouldRankScore,
+  accountExists,
+  needsSignupName,
+  showSignupNameField,
 } from "./src/lib.mjs";
 
 let failed = 0;
@@ -83,6 +86,16 @@ test("ranking is named accounts only", () => {
   assert.equal(shouldRankScore({ id: "u1", name: "" }, 12), false);
   assert.equal(shouldRankScore({ id: "u1", name: "Ada" }, 0), false);
   assert.equal(shouldRankScore({ id: "u1", name: "Ada" }, 12), true);
+});
+
+test("returning accounts do not need a display name", () => {
+  assert.equal(accountExists({ id: "u1" }), true);
+  assert.equal(accountExists(null), false);
+  assert.equal(needsSignupName(null, ""), true);
+  assert.equal(needsSignupName(null, "Ada"), false);
+  assert.equal(needsSignupName({ id: "u1", name: "Danny" }, ""), false);
+  assert.equal(showSignupNameField(true), false);
+  assert.equal(showSignupNameField(false), true);
 });
 
 test("session cookie is httpOnly and cleared on logout", () => {

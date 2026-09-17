@@ -215,6 +215,41 @@ test("later cabinets use the harder (smaller) gap", () => {
   assert.equal(cabs[18].gapH, cabs[40].gapH);
 });
 
+test("activating a course cabinet rebases x onto the live last", () => {
+  const course = J.buildCabinets({ count: 12, startX: 426, ...layout });
+  const stale = course[8];
+  assert.ok(stale.x > 2000, "course item 8 still has generation-time x");
+  const last = { x: 80, idx: 7, w: 62 };
+  J.placeNextCabinet(stale, last, { startX: 426, ...layout });
+  const expected = last.x + J.spacingAfter(last, layout.vu, layout.playH);
+  assert.ok(Math.abs(stale.x - expected) < 0.01);
+});
+
+test("recycled live window stays continuous past 8 cabinets", () => {
+  const course = J.buildCabinets({ count: 50, startX: 426, ...layout });
+  const live = [];
+  let at = J.fillLiveCabinets(live, course, 0, { startX: 426, liveCount: 8, ...layout });
+  assert.equal(live.length, 8);
+  let passed = 0;
+  for (let step = 0; step < 400; step++) {
+    for (let i = 0; i < live.length; i++) live[i].x -= 40;
+    passed += J.recyclePassedCabinets(live, -48);
+    at = J.fillLiveCabinets(live, course, at, { startX: 426, liveCount: 8, ...layout });
+    assert.equal(live.length, 8, "live window stays full");
+    const last = live[live.length - 1];
+    for (let i = 1; i < live.length; i++) {
+      const gap = live[i].x - live[i - 1].x;
+      const allowed = J.spacingAfter(live[i - 1], layout.vu, layout.playH) + 0.5;
+      assert.ok(gap <= allowed, `empty wave gap ${gap} > ${allowed} at ${i} after ${passed} passed`);
+    }
+    assert.ok(J.maxLiveGap(live) < 400, "no screen-wide hole after a live batch");
+    assert.ok(last.x > 200, "next cabinet already approaching from the right");
+    if (passed >= 24) break;
+  }
+  assert.ok(passed >= 24, `only passed ${passed}`);
+  assert.ok(at > 8, "course advanced past the first live batch");
+});
+
 if (failed) {
   console.error(`\n${failed} failed`);
   process.exit(1);
