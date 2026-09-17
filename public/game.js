@@ -69,7 +69,16 @@
   let oakPat = null;
   let wallGrad = null;
   let prepared = null;
+  let course = null;
+  let courseAt = 0;
+  let scene = null;
+  const canvasPool = [];
+  const bitPool = [];
   const CACHE_PAD = 22;
+  let lastDrawMs = 0;
+  let lastFps = 0;
+  let fpsFrames = 0;
+  let fpsStamp = 0;
 
   const sfx = {
     ctx: null,
@@ -163,22 +172,27 @@
 
   function layout() {
     const q = qcfg();
-    const dpr = Math.min(window.devicePixelRatio || 1, q.dprCap);
-    state.drawDpr = dpr;
-    state.cacheDpr = q.cacheDpr;
-    state.simple = q.simple;
     const { W, H } = viewSize();
+    const dpr = J.backingDpr(W, H, window.devicePixelRatio || 1, q.dprCap, J.PIXEL_BUDGET);
     const pixelW = Math.round(W * dpr);
     const pixelH = Math.round(H * dpr);
-    if (canvas.width === pixelW && canvas.height === pixelH && state.W === W && state.H === H && state.drawDpr === dpr) {
-      return;
-    }
+    const sameSize =
+      canvas.width === pixelW &&
+      canvas.height === pixelH &&
+      state.W === W &&
+      state.H === H &&
+      state.drawDpr === dpr;
+    state.drawDpr = dpr;
+    state.cacheDpr = dpr;
+    state.simple = q.simple;
+    ctx.imageSmoothingEnabled = false;
+    if (sameSize) return;
     canvas.width = pixelW;
     canvas.height = pixelH;
     canvas.style.width = W + "px";
     canvas.style.height = H + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.imageSmoothingEnabled = !q.simple;
+    ctx.imageSmoothingEnabled = false;
     state.W = W;
     state.H = H;
     state.vu = clamp(W / 390, 0.82, 1.15);
@@ -193,6 +207,7 @@
     wallGrad.addColorStop(1, "#e6d9c4");
     for (let i = 0; i < cabs.length; i++) cabs[i].w = state.cabW;
     invalidateCabCaches();
+    scene = null;
   }
 
   function difficulty(score) {
@@ -223,8 +238,13 @@
     );
   }
 
+  function spawnY() {
+    if (state.ceilH && state.playH) return state.ceilH + state.playH * 0.45;
+    return state.H * 0.42;
+  }
+
   function resetBird() {
-    bird.y = state.H * 0.42;
+    bird.y = spawnY();
     bird.vy = 0;
     bird.frame = 1;
     bird.wingT = 0;
@@ -235,38 +255,97 @@
     scoreEl.textContent = "0";
   }
 
-  function resetWorld(attract) {
+  function recycleCanvas(c) {
+    if (!c) return;
+    if (canvasPool.length < 24) canvasPool.push(c);
+  }
+
+  function releaseCab(cab) {
+    if (!cab) return;
+    if (cab.cache) {
+      recycleCanvas(cab.cache.top);
+      recycleCanvas(cab.cache.bot);
+      cab.cache = null;
+    }
+  }
+
+  function clearCabs() {
+    for (let i = 0; i < cabs.length; i++) releaseCab(cabs[i]);
     cabs.length = 0;
-    bits.length = 0;
-    const startX = attract ? state.W * 0.58 : state.W + 36;
-    const count = attract ? 6 : J.AHEAD;
-    const built = J.buildCabinets(Object.assign(layoutOpts(), { count, startX }));
-    for (let i = 0; i < built.length; i++) cabs.push(built[i]);
+  }
+
+  function recyclePassed() {
+    while (cabs.length && cabs[0].x + cabs[0].w < -48) {
+      releaseCab(cabs.shift());
+    }
+  }
+
+  function takeCourseCab() {
+    if (course && courseAt < course.length) return course[courseAt++];
+    return null;
+  }
+
+  function ensureLive() {
+    while (cabs.length < J.LIVE) {
+      const next = takeCourseCab();
+      if (next) {
+        next.w = state.cabW;
+        cabs.push(next);
+        continue;
+      }
+      const last = cabs[cabs.length - 1];
+      if (!last) {
+        const built = J.buildCabinets(
+          Object.assign(layoutOpts(), { count: J.LIVE, startX: state.W + 36 })
+        );
+        for (let i = 0; i < built.length; i++) cabs.push(built[i]);
+        break;
+      }
+      const idx = last.idx + 1;
+      cabs.push(spawnCab(last.x + difficulty(idx).spacing, last, idx));
+    }
+  }
+
+  function resetWorld() {
+    clearCabs();
+    while (bits.length) bitPool.push(bits.pop());
+    course = null;
+    courseAt = 0;
     resetBird();
   }
 
   function startGame() {
-    bits.length = 0;
-    if (!prepared || prepared.length < J.AHEAD) prepareLevel();
-    cabs.length = 0;
-    for (let i = 0; i < prepared.length; i++) cabs.push(prepared[i]);
-    prepared = null;
-    resetBird();
-    state.mode = "play";
+    while (bits.length) bitPool.push(bits.pop());
     overlay.classList.add("is-off");
     hud.classList.add("is-on");
+    const prevW = state.W;
+    const prevH = state.H;
+    layout();
+    if (!prepared || prepared.length < J.AHEAD || state.W !== prevW || state.H !== prevH) {
+      prepareLevel();
+    }
+    course = prepared;
+    courseAt = 0;
+    prepared = null;
+    clearCabs();
+    ensureLive();
+    resetBird();
+    bird.y = spawnY();
     bird.vy = -400 * state.vu;
+    state.mode = "play";
+    state.spawnUntil = performance.now() + 250;
     sfx.flap();
     puff(bird.x - 8, bird.y + 10, 6, PAL.white);
     state.qualityGraceUntil = performance.now() + 1800;
     state.badWindows = 0;
     frameSamples.length = 0;
-    warmVisible(1);
+    warmFirst(cabs, 1);
   }
 
   function gameOver() {
     if (state.mode !== "play") return;
     state.mode = "dead";
+    state.spawnUntil = 0;
     state.diedAt = performance.now();
     state.shake = 11;
     state.flash = 0.45;
@@ -281,9 +360,11 @@
     if (window.HagroAccount) window.HagroAccount.submitScore(state.score);
     titleEl.textContent = "HagroBird";
     resultEl.hidden = false;
-    resultEl.innerHTML = best
-      ? `Nieuw record <strong>${state.score}</strong>`
-      : `Score <strong>${state.score}</strong>`;
+    resultEl.textContent = "";
+    resultEl.append(best ? "Nieuw record " : "Score ");
+    const strong = document.createElement("strong");
+    strong.textContent = String(state.score);
+    resultEl.append(strong);
     ctaEl.textContent = "Tik om opnieuw";
     overlay.dataset.mode = "dead";
     prepareLevel();
@@ -291,7 +372,7 @@
       if (state.mode === "dead") {
         overlay.classList.remove("is-off");
         hud.classList.remove("is-on");
-        warmPrepared(8);
+        warmFirst(prepared, qcfg().warmStart);
         idleWarm();
       }
     }, 420);
@@ -314,12 +395,8 @@
     }
     bird.vy = PHYS.flap * state.vu;
     bird.wingT = 0;
-    const jx = bird.x - 10;
-    const jy = bird.y + 12;
-    requestAnimationFrame(() => {
-      sfx.flap();
-      puff(jx, jy, 5, "#ffffffcc");
-    });
+    sfx.flap();
+    puff(bird.x - 10, bird.y + 12, 5, "#ffffffcc");
   }
 
   function puff(x, y, n, color) {
@@ -327,16 +404,16 @@
     if (scale <= 0) return;
     n = Math.max(1, Math.round(n * scale));
     for (let i = 0; i < n; i++) {
-      bits.push({
-        x,
-        y,
-        vx: rand(-80, 40),
-        vy: rand(-60, 80),
-        life: rand(0.25, 0.55),
-        age: 0,
-        size: rand(2, 5),
-        color,
-      });
+      const p = bitPool.pop() || {};
+      p.x = x;
+      p.y = y;
+      p.vx = rand(-80, 40);
+      p.vy = rand(-60, 80);
+      p.life = rand(0.25, 0.55);
+      p.age = 0;
+      p.size = rand(2, 5);
+      p.color = color;
+      bits.push(p);
     }
   }
 
@@ -375,7 +452,11 @@
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.vy += 120 * dt;
-      if (p.age > p.life) bits.splice(i, 1);
+      if (p.age > p.life) {
+        bitPool.push(p);
+        bits[i] = bits[bits.length - 1];
+        bits.pop();
+      }
     }
 
     if (state.mode === "start") {
@@ -391,6 +472,7 @@
     bird.wingT += dt * (bird.vy < 0 ? 16 : 9);
 
     if (state.mode === "dead") {
+      if (state.spawnUntil && performance.now() < state.spawnUntil) return;
       const floor = state.H - state.groundH - bird.size * 0.18;
       if (bird.y > floor) {
         bird.y = floor;
@@ -400,42 +482,30 @@
     }
 
     const d = difficulty(state.score);
-    for (const cab of cabs) {
-      cab.x -= d.speed * dt;
+    const speed = d.speed;
+    for (let i = 0; i < cabs.length; i++) {
+      const cab = cabs[i];
+      cab.x -= speed * dt;
       if (!cab.scored && cab.x + cab.w < bird.x) {
         cab.scored = true;
         state.score += 1;
         scoreEl.textContent = String(state.score);
-        const px = bird.x + 16;
-        const py = bird.y;
-        requestAnimationFrame(() => {
-          sfx.point();
-          puff(px, py, 7, PAL.gold);
-        });
+        sfx.point();
+        puff(bird.x + 16, bird.y, 7, PAL.gold);
       }
     }
-    while (cabs.length && cabs[0].x + cabs[0].w < -80) {
-      cabs.shift().cache = null;
-    }
-    while (cabs.length < J.AHEAD) {
-      const last = cabs[cabs.length - 1];
-      if (!last) {
-        const built = J.buildCabinets(
-          Object.assign(layoutOpts(), { count: J.AHEAD, startX: state.W + 36 })
-        );
-        for (let i = 0; i < built.length; i++) cabs.push(built[i]);
-        break;
-      }
-      const idx = last.idx + 1;
-      cabs.push(spawnCab(last.x + difficulty(idx).spacing, last, idx));
-    }
+    recyclePassed();
+    ensureLive();
+
+    if (performance.now() < (state.spawnUntil || 0)) return;
 
     const r = bird.size * 0.24;
     if (bird.y - r < state.ceilH || bird.y + r > state.H - state.groundH) {
       gameOver();
       return;
     }
-    for (const cab of cabs) {
+    for (let i = 0; i < cabs.length; i++) {
+      const cab = cabs[i];
       if (cab.x > bird.x + r + 8) break;
       if (cab.x + cab.w < bird.x - r) continue;
       if (hitsCab(cab, bird.x, bird.y, r)) {
@@ -447,99 +517,71 @@
 
   function makeOffscreen(w, h) {
     const dpr = state.cacheDpr || 1;
-    const c = document.createElement("canvas");
-    c.width = Math.max(1, Math.ceil(w * dpr));
-    c.height = Math.max(1, Math.ceil(h * dpr));
+    const bw = Math.max(1, Math.ceil(w * dpr));
+    const bh = Math.max(1, Math.ceil(h * dpr));
+    const c = canvasPool.pop() || document.createElement("canvas");
+    if (c.width !== bw) c.width = bw;
+    if (c.height !== bh) c.height = bh;
     const cctx = c.getContext("2d");
+    cctx.setTransform(1, 0, 0, 1, 0, 0);
+    cctx.clearRect(0, 0, bw, bh);
     cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    cctx.imageSmoothingEnabled = !state.simple;
+    cctx.imageSmoothingEnabled = false;
     return { canvas: c, ctx: cctx };
   }
 
   function ensureCabCache(cab) {
-    if (cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w) return;
+    if (cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w && cab.cache.dpr === state.cacheDpr) {
+      return;
+    }
+    if (cab.cache) {
+      recycleCanvas(cab.cache.top);
+      recycleCanvas(cab.cache.bot);
+      cab.cache = null;
+    }
     const topH = cab.gapY;
     const botH = Math.max(1, state.H - (cab.gapY + cab.gapH));
     const origX = cab.x;
-    cab.x = 0;
     const prev = gfx;
+    cab.x = 0;
+    try {
+      const top = makeOffscreen(cab.w, topH + CACHE_PAD);
+      gfx = top.ctx;
+      drawColumn(cab, 0, topH, true);
 
-    const top = makeOffscreen(cab.w, topH + CACHE_PAD);
-    gfx = top.ctx;
-    drawColumn(cab, 0, topH, true);
+      const bot = makeOffscreen(cab.w, botH);
+      gfx = bot.ctx;
+      drawColumn(cab, 0, botH, false);
 
-    const bot = makeOffscreen(cab.w, botH);
-    gfx = bot.ctx;
-    drawColumn(cab, 0, botH, false);
-
-    gfx = prev;
-    cab.x = origX;
-    cab.cache = {
-      top: top.canvas,
-      bot: bot.canvas,
-      topH,
-      botH,
-      pad: CACHE_PAD,
-      H: state.H,
-      w: cab.w,
-    };
-    trimCaches();
-  }
-
-  function trimCaches() {
-    const max = qcfg().maxCache;
-    const lists = prepared ? [cabs, prepared] : [cabs];
-    const held = [];
-    for (let L = 0; L < lists.length; L++) {
-      const list = lists[L];
-      for (let i = 0; i < list.length; i++) {
-        if (list[i].cache) held.push(list[i]);
-      }
-    }
-    if (held.length <= max) return;
-    held.sort((a, b) => a.x - b.x);
-    while (held.length > max) {
-      const passed = held[0].x + held[0].w < 0 ? held.shift() : held.pop();
-      passed.cache = null;
+      cab.cache = {
+        top: top.canvas,
+        bot: bot.canvas,
+        topH,
+        botH,
+        pad: CACHE_PAD,
+        H: state.H,
+        w: cab.w,
+        dpr: state.cacheDpr,
+      };
+    } finally {
+      gfx = prev;
+      cab.x = origX;
     }
   }
 
-  function cacheHorizon() {
-    const q = qcfg();
-    return state.W + (state.mode === "play" ? q.horizonPlay : q.horizonPrep);
+  function cacheReady(cab) {
+    return !!(cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w && cab.cache.dpr === state.cacheDpr);
   }
 
-  function warmList(list, budget, horizon) {
+  function warmFirst(list, budget) {
     if (!list) return;
     let left = budget;
     for (let i = 0; i < list.length; i++) {
       if (left <= 0) return;
       const cab = list[i];
-      if (cab.x > horizon) return;
-      if (cab.x + cab.w < -80) {
-        cab.cache = null;
-        continue;
-      }
-      if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
+      if (!cacheReady(cab)) {
         ensureCabCache(cab);
         left -= 1;
-      }
-    }
-  }
-
-  function warmUpcoming(allNear) {
-    const q = qcfg();
-    warmList(cabs, allNear ? q.warmStart : q.warmPlay, cacheHorizon());
-  }
-
-  function warmVisible(maxN) {
-    let n = 0;
-    for (let i = 0; i < cabs.length && n < maxN; i++) {
-      const cab = cabs[i];
-      if (cab.x > state.W + 48) break;
-      if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
-        ensureCabCache(cab);
-        n += 1;
       }
     }
   }
@@ -548,24 +590,14 @@
     const list = state.mode === "play" ? cabs : prepared;
     if (!list || !list.length) return;
     const t0 = performance.now();
-    const horizon = cacheHorizon();
     for (let i = 0; i < list.length; i++) {
       if (performance.now() - t0 >= ms) return;
       const cab = list[i];
-      if (cab.x > horizon) return;
-      if (cab.x + cab.w < -80) {
-        cab.cache = null;
-        continue;
-      }
-      if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
+      if (!cacheReady(cab)) {
         ensureCabCache(cab);
         return;
       }
     }
-  }
-
-  function warmPrepared(n) {
-    warmList(prepared, n, cacheHorizon());
   }
 
   function idleWarm() {
@@ -573,18 +605,38 @@
     const step = () => {
       const list = state.mode === "play" ? cabs : prepared;
       if (!list || !list.length) return;
-      warmList(list, qcfg().warmPlay, cacheHorizon());
-      const pending = list.some(
-        (cab) => cab.x <= cacheHorizon() && (!cab.cache || cab.cache.H !== state.H)
-      );
+      warmFirst(list, qcfg().warmPlay);
+      let pending = false;
+      const n = Math.min(list.length, J.LIVE);
+      for (let i = 0; i < n; i++) {
+        if (!cacheReady(list[i])) {
+          pending = true;
+          break;
+        }
+      }
       if (pending && state.mode !== "play") ric(step, { timeout: 180 });
     };
     ric(step, { timeout: 180 });
   }
 
   function invalidateCabCaches() {
-    for (let i = 0; i < cabs.length; i++) cabs[i].cache = null;
-    if (prepared) for (let i = 0; i < prepared.length; i++) prepared[i].cache = null;
+    for (let i = 0; i < cabs.length; i++) {
+      if (cabs[i].cache) {
+        recycleCanvas(cabs[i].cache.top);
+        recycleCanvas(cabs[i].cache.bot);
+        cabs[i].cache = null;
+      }
+    }
+    if (prepared) {
+      for (let i = 0; i < prepared.length; i++) {
+        if (prepared[i].cache) {
+          recycleCanvas(prepared[i].cache.top);
+          recycleCanvas(prepared[i].cache.bot);
+          prepared[i].cache = null;
+        }
+      }
+    }
+    scene = null;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -947,56 +999,27 @@
 
   function drawCabinet(cab) {
     if (cab.x + cab.w < -8 || cab.x > state.W + 8) return;
-    if (!cab.cache || cab.cache.H !== state.H || cab.cache.w !== cab.w) {
-      ensureCabCache(cab);
-    }
-    if (cab.cache && cab.cache.H === state.H && cab.cache.w === cab.w) {
+    if (cacheReady(cab)) {
       gfx.drawImage(cab.cache.top, cab.x, 0, cab.w, cab.cache.topH + cab.cache.pad);
       gfx.drawImage(cab.cache.bot, cab.x, cab.gapY + cab.gapH, cab.w, cab.cache.botH);
       return;
     }
-    const topH = cab.gapY;
-    const botY = cab.gapY + cab.gapH;
-    const botH = state.H - botY;
-    drawColumn(cab, 0, topH, true);
-    drawColumn(cab, botY, botH, false);
+    drawColumnSimple(cab, 0, cab.gapY, true);
+    drawColumnSimple(cab, cab.gapY + cab.gapH, Math.max(1, state.H - (cab.gapY + cab.gapH)), false);
   }
 
-  function drawWorld() {
+  function paintScene(target) {
+    const prev = gfx;
+    gfx = target;
     const { W, H, ceilH, groundH } = state;
     gfx.fillStyle = wallGrad || "#e6d9c4";
     gfx.fillRect(0, 0, W, H);
-
-    const q = qcfg();
-    if (q.farBg) {
-      const far = state.bgX * 0.22;
-      gfx.globalAlpha = 0.16;
-      gfx.fillStyle = PAL.navyDeep;
-      for (let i = 0; i < 8; i++) {
-        const fx = ((i * 96 - far) % (W + 200)) - 50;
-        const topH = 52 + (i % 3) * 18;
-        roundRect(fx, ceilH + 14, 58, topH, 2);
-        gfx.fill();
-        const botH = 64 + (i % 2) * 22;
-        roundRect(fx + 8, H - groundH - botH, 62, botH, 2);
-        gfx.fill();
-        gfx.fillRect(fx + 5, H - groundH - botH - 6, 68, 6);
-      }
-      gfx.globalAlpha = 1;
-    }
-
-    const overlayOn = !overlay.classList.contains("is-off");
-    if (!overlayOn || q.farBg) {
-      for (const cab of cabs) drawCabinet(cab);
-    }
-
     gfx.fillStyle = PAL.navyDeep;
     gfx.fillRect(0, 0, W, ceilH);
     gfx.fillStyle = PAL.navy;
     gfx.fillRect(0, ceilH - 4, W, 3);
     gfx.fillStyle = PAL.gold;
     gfx.fillRect(0, ceilH - 1, W, 1.5);
-
     if (woodPat) {
       gfx.fillStyle = woodPat;
       gfx.fillRect(0, H - groundH, W, groundH);
@@ -1004,16 +1027,72 @@
       gfx.fillStyle = PAL.wood;
       gfx.fillRect(0, H - groundH, W, groundH);
     }
-    if (!state.simple) {
-      gfx.fillStyle = "rgba(0,0,0,0.08)";
-      for (let i = 0; i < 6; i++) {
-        gfx.fillRect(0, H - groundH + 10 + i * 10, W, 1);
-      }
-    }
+    gfx.fillStyle = "rgba(0,0,0,0.08)";
+    gfx.fillRect(0, H - groundH + 10, W, 1);
+    gfx.fillRect(0, H - groundH + 20, W, 1);
+    gfx.fillRect(0, H - groundH + 30, W, 1);
     gfx.fillStyle = PAL.anthra;
     gfx.fillRect(0, H - groundH, W, 7);
     gfx.fillStyle = "rgba(255,255,255,0.18)";
     gfx.fillRect(0, H - groundH + 1, W, 1);
+    gfx = prev;
+  }
+
+  function ensureScene() {
+    if (
+      scene &&
+      scene.W === state.W &&
+      scene.H === state.H &&
+      scene.dpr === state.drawDpr &&
+      scene.wood === !!woodPat
+    ) {
+      return;
+    }
+    const off = makeOffscreen(state.W, state.H);
+    paintScene(off.ctx);
+    if (scene && scene.canvas) recycleCanvas(scene.canvas);
+    scene = {
+      canvas: off.canvas,
+      W: state.W,
+      H: state.H,
+      dpr: state.drawDpr,
+      wood: !!woodPat,
+    };
+  }
+
+  function drawWorld() {
+    const { W, H, ceilH, groundH } = state;
+    ensureScene();
+    if (scene) gfx.drawImage(scene.canvas, 0, 0, W, H);
+    else paintScene(gfx);
+
+    const q = qcfg();
+    if (q.farBg) {
+      const far = state.bgX * 0.22;
+      gfx.globalAlpha = 0.16;
+      gfx.fillStyle = PAL.navyDeep;
+      for (let i = 0; i < 6; i++) {
+        const fx = ((i * 120 - far) % (W + 200)) - 50;
+        gfx.fillRect(fx, ceilH + 14, 58, 52 + (i % 3) * 18);
+        const botH = 64 + (i % 2) * 22;
+        gfx.fillRect(fx + 8, H - groundH - botH, 62, botH);
+      }
+      gfx.globalAlpha = 1;
+    }
+
+    const overlayOn = !overlay.classList.contains("is-off");
+    if (!overlayOn) {
+      for (let i = 0; i < cabs.length; i++) drawCabinet(cabs[i]);
+    }
+    if (scene) {
+      gfx.drawImage(scene.canvas, 0, 0, W, ceilH, 0, 0, W, ceilH);
+      gfx.drawImage(scene.canvas, 0, H - groundH, W, groundH, 0, H - groundH, W, groundH);
+    } else {
+      gfx.fillStyle = PAL.navyDeep;
+      gfx.fillRect(0, 0, W, ceilH);
+      gfx.fillStyle = PAL.wood;
+      gfx.fillRect(0, H - groundH, W, groundH);
+    }
   }
 
   function drawBird() {
@@ -1044,12 +1123,11 @@
   }
 
   function drawBits() {
-    for (const p of bits) {
+    for (let i = 0; i < bits.length; i++) {
+      const p = bits[i];
       ctx.globalAlpha = 1 - p.age / p.life;
       ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(p.x, p.y, p.size, p.size);
     }
     ctx.globalAlpha = 1;
   }
@@ -1080,16 +1158,20 @@
   }
 
   function noteDraw(drawMs) {
+    lastDrawMs = drawMs;
     if (state.mode !== "play") return;
     if (performance.now() < state.qualityGraceUntil) return;
     frameSamples.push(drawMs);
     if (frameSamples.length < DRAW_SAMPLES) return;
-    const sorted = frameSamples.slice().sort((a, b) => a - b);
-    const stats = {
-      median: sorted[Math.floor(sorted.length / 2)],
-      p95: sorted[Math.floor(sorted.length * 0.95)],
-    };
+    let median = 0;
+    let p95 = 0;
+    const n = frameSamples.length;
+    const copy = frameSamples.slice();
+    copy.sort((a, b) => a - b);
+    median = copy[(n / 2) | 0];
+    p95 = copy[(n * 0.95) | 0];
     frameSamples.length = 0;
+    const stats = { median, p95 };
     if (J.shouldDowngrade(stats)) {
       state.badWindows += 1;
       if (state.badWindows >= 2 && state.quality !== "low") {
@@ -1107,6 +1189,13 @@
     const dt = Math.min(0.05, (now - (state.last || now)) / 1000);
     state.last = now;
     update(dt);
+    fpsFrames += 1;
+    if (!fpsStamp) fpsStamp = now;
+    if (now - fpsStamp >= 500) {
+      lastFps = (fpsFrames * 1000) / (now - fpsStamp);
+      fpsFrames = 0;
+      fpsStamp = now;
+    }
     const minDraw = 1000 / qcfg().fps;
     const due = !state.lastDraw || now - state.lastDraw >= minDraw - 0.5;
     if (due) {
@@ -1115,7 +1204,8 @@
       const drawMs = performance.now() - t0;
       state.lastDraw = now;
       noteDraw(drawMs);
-      if (drawMs < 10) warmWithBudget(3);
+      const leftover = 14 - drawMs;
+      if (leftover > 2) warmWithBudget(Math.min(4, leftover));
     } else {
       warmWithBudget(4);
     }
@@ -1188,8 +1278,7 @@
       assets.ready = true;
       invalidateCabCaches();
       if (!prepared) prepareLevel();
-      warmUpcoming(true);
-      warmPrepared(qcfg().warmStart);
+      warmFirst(prepared, qcfg().warmStart);
       idleWarm();
     } catch (err) {
       assets.ready = false;
@@ -1201,11 +1290,14 @@
     if (J.shouldIgnoreResize(state.W, state.H, W, H)) return;
     const yRatio = bird.y / (state.H || 1);
     layout();
-    bird.y = yRatio * state.H;
-    if (state.mode === "play") warmUpcoming(false);
-    else {
+    if (state.mode === "play" && performance.now() < (state.spawnUntil || 0)) bird.y = spawnY();
+    else bird.y = yRatio * state.H;
+    if (state.mode === "play") {
+      ensureLive();
+      warmFirst(cabs, qcfg().warmPlay);
+    } else {
       if (!prepared) prepareLevel();
-      warmPrepared(qcfg().warmStart);
+      warmFirst(prepared, qcfg().warmStart);
     }
   }
   window.addEventListener("resize", onResize);
@@ -1275,17 +1367,24 @@
       cached: !!c.cache,
     })),
     prepared: prepared ? prepared.length : 0,
+    course: course ? course.length - courseAt : 0,
+    live: cabs.length,
+    fps: Math.round(lastFps),
+    drawMs: Math.round(lastDrawMs * 10) / 10,
     quality: state.quality,
     dpr: state.drawDpr,
     simple: !!state.simple,
     canvasW: canvas.width,
     canvasH: canvas.height,
+    spawnUntil: state.spawnUntil || 0,
   });
 
   layout();
   bootUI();
-  resetWorld(true);
+  resetWorld();
   prepareLevel();
+  warmFirst(prepared, qcfg().warmStart);
+  idleWarm();
   loadAssets();
   requestAnimationFrame(frame);
 })();

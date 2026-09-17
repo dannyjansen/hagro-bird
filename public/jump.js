@@ -14,57 +14,60 @@
   const REACTION = 0.12;
   const SKILL = 0.7;
   const AHEAD = 50;
+  const LIVE = 8;
+  const PIXEL_BUDGET = 2400000;
 
   const QUALITY = {
     high: {
       dprCap: 2,
-      cacheDpr: 1,
       farBg: true,
       particles: 1,
       shake: true,
       simple: false,
       fps: 60,
-      maxCache: 8,
-      warmStart: 5,
+      maxCache: 10,
+      warmStart: 8,
       warmPlay: 1,
-      horizonPlay: 640,
-      horizonPrep: 1400,
       oak: true,
     },
     mid: {
       dprCap: 2,
-      cacheDpr: 1,
       farBg: false,
       particles: 0.35,
       shake: false,
       simple: false,
       fps: 60,
-      maxCache: 6,
-      warmStart: 3,
+      maxCache: 10,
+      warmStart: 8,
       warmPlay: 1,
-      horizonPlay: 520,
-      horizonPrep: 900,
       oak: true,
     },
     low: {
       dprCap: 2,
-      cacheDpr: 1,
       farBg: false,
       particles: 0,
       shake: false,
       simple: true,
       fps: 60,
-      maxCache: 5,
-      warmStart: 2,
+      maxCache: 10,
+      warmStart: 8,
       warmPlay: 1,
-      horizonPlay: 420,
-      horizonPrep: 600,
       oak: false,
     },
   };
 
   function qualityConfig(level) {
     return QUALITY[level] || QUALITY.high;
+  }
+
+  function backingDpr(cssW, cssH, deviceDpr, cap, budget) {
+    const capDpr = cap == null ? 2 : cap;
+    const pixBudget = budget == null ? PIXEL_BUDGET : budget;
+    let dpr = Math.min(Math.max(0.5, deviceDpr || 1), capDpr);
+    const area = Math.max(1, cssW * cssH);
+    const max = Math.sqrt(pixBudget / area);
+    if (dpr > max) dpr = max;
+    return Math.max(1, Math.round(dpr * 4) / 4);
   }
 
   function pickStartQuality(info) {
@@ -161,7 +164,11 @@
     return { minCab, lo, hi };
   }
 
+  let climbKey = "";
+  let climbVal = 0;
   function maxClimb(T, vu) {
+    const key = T + ":" + vu;
+    if (key === climbKey) return climbVal;
     const g = PHYS.gravity * vu;
     const flap = PHYS.flap * vu;
     const vmax = PHYS.vyMax * vu;
@@ -175,10 +182,16 @@
       y += vy * dt;
       if (y < minY) minY = y;
     }
-    return -minY;
+    climbKey = key;
+    climbVal = -minY;
+    return climbVal;
   }
 
+  let fallKey = "";
+  let fallVal = 0;
   function maxFall(T, vu) {
+    const key = T + ":" + vu;
+    if (key === fallKey) return fallVal;
     const g = PHYS.gravity * vu;
     const vmax = PHYS.vyMax * vu;
     let y = 0;
@@ -188,7 +201,9 @@
       vy = Math.min(vy + g * dt, vmax);
       y += vy * dt;
     }
-    return y;
+    fallKey = key;
+    fallVal = y;
+    return fallVal;
   }
 
   function pairTravel(prev, next, opts) {
@@ -229,13 +244,20 @@
     return y > next.gapY + r && y < next.gapY + next.gapH - r;
   }
 
+  let hbKey = "";
+  let hbVal = { climb: 0, fall: 0 };
   function humanBudget(score, vu, playH) {
+    const t = clamp(score / 18, 0, 1);
+    const key = t + ":" + vu + ":" + playH;
+    if (key === hbKey) return hbVal;
     const d = difficulty(score, vu, playH);
     const T = Math.max(0.2, d.spacing / d.speed - REACTION);
-    return {
+    hbKey = key;
+    hbVal = {
       climb: maxClimb(T, vu) * SKILL,
       fall: maxFall(T, vu) * SKILL,
     };
+    return hbVal;
   }
 
   function pickGapY(opts) {
@@ -304,8 +326,11 @@
   return {
     PHYS,
     AHEAD,
+    LIVE,
+    PIXEL_BUDGET,
     QUALITY,
     qualityConfig,
+    backingDpr,
     pickStartQuality,
     shouldDowngrade,
     shouldUpgrade,
