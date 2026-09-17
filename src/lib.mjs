@@ -133,6 +133,13 @@ function publicUser(row) {
   };
 }
 
+function shouldRankScore(user, score) {
+  if (!user || !user.id) return false;
+  if (!normalizeName(user.name)) return false;
+  const n = Number(score);
+  return Number.isInteger(n) && n >= 1 && n <= 9999;
+}
+
 function parseFrom(value) {
   const raw = String(value || "").trim();
   const angled = /^(.*)<([^>]+)>\s*$/.exec(raw);
@@ -186,6 +193,7 @@ export {
   hmacHex,
   parseDataUrl,
   publicUser,
+  shouldRankScore,
   parseFrom,
   loginEmailHtml,
   escapeHtml,

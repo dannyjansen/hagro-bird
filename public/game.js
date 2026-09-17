@@ -357,7 +357,7 @@
       storeSet(STORE_HI, String(state.hi));
       hiEl.textContent = String(state.hi);
     }
-    if (window.HagroAccount) window.HagroAccount.submitScore(state.score);
+    if (window.HagroAccount && isLoggedIn()) window.HagroAccount.submitScore(state.score);
     titleEl.textContent = "HagroBird";
     resultEl.hidden = false;
     resultEl.textContent = "";
@@ -378,8 +378,30 @@
     }, 420);
   }
 
+  function isLoggedIn() {
+    return !!(window.HagroAccount && typeof window.HagroAccount.me === "function" && window.HagroAccount.me());
+  }
+
+  function playStartAllowed() {
+    const overlayOn = !overlay.classList.contains("is-off");
+    return J.canStartFromPlayInput({
+      overlayOn,
+      mode: state.mode,
+      loggedIn: isLoggedIn(),
+    });
+  }
+
+  function startFromGuestButton() {
+    if (isLoggedIn()) return;
+    if (state.mode !== "start") return;
+    if (overlay.classList.contains("is-off")) return;
+    sfx.ensure();
+    startGame();
+  }
+
   function flap() {
     if (state.mode === "start") {
+      if (!playStartAllowed()) return;
       sfx.ensure();
       startGame();
       return;
@@ -1315,6 +1337,11 @@
   }
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space" || e.code === "ArrowUp") {
+      if (J.isUiControl(e.target)) return;
+      if (!playStartAllowed()) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       flap();
     }
@@ -1334,12 +1361,26 @@
     });
   });
   document.querySelector(".site").addEventListener("pointerdown", (e) => e.stopPropagation());
+  const guestStartEl = document.getElementById("guest-start");
+  function onGuestStart(e) {
+    e.stopPropagation();
+    if (e.cancelable) e.preventDefault();
+    const t = typeof e.timeStamp === "number" && e.timeStamp > 0 ? e.timeStamp : performance.now();
+    if (J.isDuplicateInput(lastInputAt, t)) return;
+    lastInputAt = t;
+    startFromGuestButton();
+  }
+  if (guestStartEl) {
+    if (J.prefersPointerEvents(window)) guestStartEl.addEventListener("pointerdown", onGuestStart);
+    else guestStartEl.addEventListener("click", onGuestStart);
+  }
   function onCta(e) {
     e.stopPropagation();
     if (e.cancelable) e.preventDefault();
     const t = typeof e.timeStamp === "number" && e.timeStamp > 0 ? e.timeStamp : performance.now();
     if (J.isDuplicateInput(lastInputAt, t)) return;
     lastInputAt = t;
+    if (!playStartAllowed()) return;
     flap();
   }
   if (J.prefersPointerEvents(window)) ctaEl.addEventListener("pointerdown", onCta);

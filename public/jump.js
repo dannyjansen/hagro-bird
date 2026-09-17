@@ -123,6 +123,16 @@
     return !!el.closest("a, button, input, textarea, select, label, option, [data-ui]");
   }
 
+  // Login overlay is login-only: space / flap / click-to-start stay off until a
+  // named account taps the start CTA, or a guest taps "Start zonder account".
+  function canStartFromPlayInput(opts) {
+    const overlayOn = !!(opts && opts.overlayOn);
+    const mode = opts && opts.mode;
+    const loggedIn = !!(opts && opts.loggedIn);
+    if (overlayOn && mode === "start" && !loggedIn) return false;
+    return true;
+  }
+
   function prefersPointerEvents(globalObj) {
     const g = globalObj || (typeof globalThis !== "undefined" ? globalThis : null);
     return !!(g && typeof g.PointerEvent === "function");
@@ -340,6 +350,7 @@
     isDuplicateInput,
     eventElement,
     isUiControl,
+    canStartFromPlayInput,
     prefersPointerEvents,
     viewSizeFrom,
     clamp,
