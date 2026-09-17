@@ -15,6 +15,7 @@
   const avatarFile = document.getElementById("avatar-file");
   const logoutBtn = document.getElementById("logout");
   const sendBtn = document.getElementById("login-send");
+  const AVATAR_FALLBACK = "assets/icon-192.png";
 
   let me = null;
   let pendingEmail = "";
@@ -81,8 +82,17 @@
   }
 
   function avatarUrl(user) {
-    if (!user || !user.id || !user.hasAvatar) return "assets/icon-192.png";
+    if (!user || !user.id || !user.hasAvatar) return AVATAR_FALLBACK;
     return "/api/avatar/" + encodeURIComponent(user.id) + "?v=" + encodeURIComponent(user.updatedAt || "0");
+  }
+
+  function bindAvatar(img, user) {
+    if (!img) return;
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = AVATAR_FALLBACK;
+    };
+    img.src = avatarUrl(user);
   }
 
   function emblem(rank) {
@@ -112,10 +122,11 @@
       li.innerHTML = `
         <span class="board-rank">${row.rank}</span>
         ${medal}
-        <img class="board-avatar" alt="" width="32" height="32" src="${avatarUrl(row)}" />
+        <img class="board-avatar" alt="" width="32" height="32" />
         <span class="board-name"></span>
         <span class="board-score">${row.bestScore}</span>
       `;
+      bindAvatar(li.querySelector(".board-avatar"), row);
       li.querySelector(".board-name").textContent = row.name || "Speler";
       listEl.appendChild(li);
     });
@@ -129,8 +140,8 @@
       guestEl.hidden = true;
       userEl.hidden = false;
       accountNameEl.textContent = me.name || me.email;
-      avatarImg.src = avatarUrl(me);
       avatarImg.alt = me.name || "Profielfoto";
+      bindAvatar(avatarImg, me);
     } else {
       guestEl.hidden = false;
       userEl.hidden = true;
@@ -183,35 +194,10 @@
   }
 
   function resizeAvatar(file) {
-    return new Promise((resolve, reject) => {
-      if (!file || !file.type || !file.type.startsWith("image/")) {
-        reject(new Error("Kies een afbeelding."));
-        return;
-      }
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const size = 192;
-        const canvas = document.createElement("canvas");
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext("2d");
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-        ctx.fillStyle = "#112d63";
-        ctx.fillRect(0, 0, size, size);
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-        const data = canvas.toDataURL("image/jpeg", 0.84);
-        resolve(data);
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Deze foto kon niet worden gelezen."));
-      };
-      img.src = url;
-    });
+    if (window.HagroAvatar && typeof window.HagroAvatar.compress === "function") {
+      return window.HagroAvatar.compress(file);
+    }
+    return Promise.reject(new Error("Foto-upload is niet beschikbaar."));
   }
 
   if (emailEl) {

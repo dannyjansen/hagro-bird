@@ -112,7 +112,12 @@
             <div id="account-user" class="account-user" hidden>
               <label class="avatar-btn" title="Profielfoto kiezen">
                 <img id="avatar-img" alt="Profielfoto" width="48" height="48" />
-                <input id="avatar-file" type="file" accept="image/*" hidden />
+                <input
+                  id="avatar-file"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/heic,image/heif,image/*"
+                  hidden
+                />
               </label>
               <div class="account-meta">
                 <p id="account-name"></p>
@@ -135,6 +140,7 @@
       </div>
     </div>
     <script src="jump.js"></script>
+    <script src="avatar.js"></script>
     <script src="account.js"></script>
     <script src="game.js"></script>
   </body>

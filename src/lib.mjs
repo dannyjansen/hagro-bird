@@ -104,11 +104,90 @@ async function hmacHex(secret, value) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function hexToBytes(hex) {
+  const raw = String(hex || "").replace(/\s+/g, "");
+  if (!raw || raw.length % 2 !== 0) return null;
+  const bytes = new Uint8Array(raw.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    const n = parseInt(raw.slice(i * 2, i * 2 + 2), 16);
+    if (Number.isNaN(n)) return null;
+    bytes[i] = n;
+  }
+  return bytes;
+}
+
+function sniffImageType(bytes) {
+  if (!bytes || bytes.length < 12) return "";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+    return "image/gif";
+  }
+  return "";
+}
+
+function coerceAvatarBytes(value) {
+  if (!value) return null;
+  if (value instanceof Uint8Array) return value.length ? value : null;
+  if (value instanceof ArrayBuffer) {
+    return value.byteLength ? new Uint8Array(value) : null;
+  }
+  if (ArrayBuffer.isView(value)) {
+    return value.byteLength ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("data:")) return parseDataUrl(trimmed)?.bytes || null;
+    const fromHex = hexToBytes(trimmed);
+    if (fromHex && sniffImageType(fromHex)) return fromHex;
+    return parseDataUrl("data:image/jpeg;base64," + trimmed)?.bytes || null;
+  }
+  return null;
+}
+
+function decodeStoredAvatar(row) {
+  if (!row) return null;
+  const raw = coerceAvatarBytes(row.avatar) || hexToBytes(row.avatar_hex);
+  if (!raw || raw.length < 32 || raw.length > MAX_AVATAR_BYTES) return null;
+  const type = sniffImageType(raw);
+  if (type) return { type, bytes: raw };
+  const asText = new TextDecoder().decode(raw).trim();
+  const parsed = asText.startsWith("data:")
+    ? parseDataUrl(asText)
+    : parseDataUrl("data:image/jpeg;base64," + asText);
+  if (!parsed) return null;
+  const sniffed = sniffImageType(parsed.bytes);
+  return sniffed ? { type: sniffed, bytes: parsed.bytes } : null;
+}
+
 function parseDataUrl(image) {
   const raw = String(image || "");
-  const match = /^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/]+=*)$/.exec(raw);
+  const match = /^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,([A-Za-z0-9+/]+=*)$/.exec(raw);
   if (!match) return null;
-  const type = match[1] === "image/jpg" ? "image/jpeg" : match[1];
   let binary;
   try {
     binary = atob(match[2]);
@@ -118,6 +197,8 @@ function parseDataUrl(image) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   if (bytes.length < 32 || bytes.length > MAX_AVATAR_BYTES) return null;
+  const type = sniffImageType(bytes);
+  if (!type) return null;
   return { type, bytes };
 }
 
@@ -203,6 +284,9 @@ export {
   randomDigits,
   randomToken,
   hmacHex,
+  hexToBytes,
+  sniffImageType,
+  decodeStoredAvatar,
   parseDataUrl,
   publicUser,
   shouldRankScore,
