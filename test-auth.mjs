@@ -1,0 +1,104 @@
+import assert from "node:assert/strict";
+import {
+  isValidEmail,
+  normalizeEmail,
+  normalizeName,
+  parseDataUrl,
+  publicUser,
+  originOk,
+  cookieValue,
+  sessionCookie,
+  escapeHtml,
+} from "./src/lib.mjs";
+
+let failed = 0;
+function test(name, fn) {
+  try {
+    fn();
+    console.log("ok  ", name);
+  } catch (err) {
+    failed += 1;
+    console.error("FAIL", name);
+    console.error("    ", err.message);
+  }
+}
+
+test("normalizes and validates email", () => {
+  assert.equal(normalizeEmail("  Danny@Hagro.nl "), "danny@hagro.nl");
+  assert.equal(isValidEmail("danny@hagro.nl"), true);
+  assert.equal(isValidEmail("niet-geldig"), false);
+  assert.equal(isValidEmail(""), false);
+});
+
+test("names are trimmed and capped", () => {
+  assert.equal(normalizeName("  Jan   de Vries  "), "Jan de Vries");
+  assert.equal(normalizeName("x".repeat(80)).length, 40);
+});
+
+test("avatar data URLs must be small raster images", () => {
+  const payload = Buffer.alloc(40, 7).toString("base64");
+  const ok = parseDataUrl("data:image/jpeg;base64," + payload);
+  assert.equal(ok.type, "image/jpeg");
+  assert.equal(ok.bytes.length, 40);
+  assert.equal(parseDataUrl("data:text/plain;base64,aaaa"), null);
+  assert.equal(parseDataUrl("data:image/jpeg;base64,xxxx"), null);
+});
+
+test("public user omits login code fields", () => {
+  const user = publicUser({
+    id: "u1",
+    email: "a@b.nl",
+    name: "Ada",
+    best_score: 12,
+    has_avatar: 1,
+    updated_at: 9,
+    login_code_hash: "secret",
+  });
+  assert.deepEqual(user, {
+    id: "u1",
+    name: "Ada",
+    email: "a@b.nl",
+    bestScore: 12,
+    hasAvatar: true,
+    updatedAt: 9,
+  });
+});
+
+test("same-origin posts are allowed", () => {
+  const req = new Request("https://hagro-bird.example/api/score", {
+    headers: { Origin: "https://hagro-bird.example" },
+  });
+  assert.equal(originOk(req, {}), true);
+  const other = new Request("https://hagro-bird.example/api/score", {
+    headers: { Origin: "https://evil.example" },
+  });
+  assert.equal(originOk(other, {}), false);
+  assert.equal(originOk(other, { TRUSTED_ORIGINS: "https://evil.example" }), true);
+});
+
+test("session cookie is httpOnly and cleared on logout", () => {
+  const url = new URL("https://hagro.example/");
+  const set = sessionCookie("tok", url, 60);
+  assert.match(set, /HttpOnly/);
+  assert.match(set, /SameSite=Lax/);
+  assert.match(set, /Secure/);
+  const clear = sessionCookie("", url, 0);
+  assert.match(clear, /Max-Age=0/);
+});
+
+test("cookie parser reads hb_session", () => {
+  const req = new Request("https://x.example/", {
+    headers: { Cookie: "a=1; hb_session=abc; b=2" },
+  });
+  assert.equal(cookieValue(req, "hb_session"), "abc");
+});
+
+test("html in names cannot break the email template", () => {
+  assert.equal(escapeHtml("<b>x</b>"), "&lt;b&gt;x&lt;/b&gt;");
+});
+
+if (failed) {
+  console.error(`\n${failed} failed`);
+  process.exit(1);
+}
+console.log("\nall auth tests passed");
