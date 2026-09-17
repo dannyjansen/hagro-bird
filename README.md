@@ -50,10 +50,13 @@ Geen `BETTER_AUTH` / wachtwoorden: dit spel heeft alleen e-mailcodes.
 ## Besturing
 
 - Tik of klik in het veld: flap (tijdens het spel)
-- Start/opnieuw: de gouden knop
-- Spatie / pijl omhoog: flap
+- Loginscherm is alleen inloggen: spatie, tikken en flap starten daar niet
+- Gast: alleen via **Start zonder account**. Gast-runs gaan niet naar de ranking
+- Ingelogd: **Tik om te starten** (of spatie). Scores van named accounts gaan naar de ranking
+- Opnieuw na afloop: de gouden knop
+- Spatie / pijl omhoog: flap (niet op het loginscherm)
 - M: mute
-- Record op dit toestel blijft in `localStorage`; de ranking is accountgebonden
+- Record op dit toestel blijft in `localStorage`; de ranking is alleen voor named accounts
 
 ## Stack
 
