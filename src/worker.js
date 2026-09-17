@@ -141,6 +141,17 @@ async function handleRequest(request, env) {
       });
     }
 
+    if (path === "/api/auth/lookup" && request.method === "GET") {
+      const email = lib.normalizeEmail(url.searchParams.get("email"));
+      if (!lib.isValidEmail(email)) return lib.json({ exists: false });
+      const ip = clientIp(request);
+      if (!(await rateLimit(env, "lookup:" + ip, RATE_IP_MAX))) {
+        return lib.error("Te veel verzoeken. Wacht even.", 429);
+      }
+      const existing = await userByEmail(env, email);
+      return lib.json({ exists: lib.accountExists(existing) });
+    }
+
     if (path === "/api/me" && request.method === "GET") {
       const user = await sessionUser(env, request);
       if (!user) return lib.error("Niet ingelogd.", 401);
@@ -183,7 +194,9 @@ async function handleRequest(request, env) {
           .bind(codeHash, t + lib.CODE_TTL_MS, name, name, t, email)
           .run();
       } else {
-        if (!name) return lib.error("Vul je naam in voor de eerste keer.");
+        if (lib.needsSignupName(existing, name)) {
+          return lib.json({ error: "Vul je naam in voor de eerste keer.", needsName: true }, 400);
+        }
         const id = crypto.randomUUID();
         await env.DB.prepare(
           `INSERT INTO users (id, email, name, login_code_hash, login_code_expires, best_score, created_at, updated_at)
@@ -199,7 +212,7 @@ async function handleRequest(request, env) {
       } catch {
         return lib.error("Code kon niet worden gemaild. Probeer later.", 502);
       }
-      const payload = { ok: true, sent };
+      const payload = { ok: true, sent, exists: lib.accountExists(existing) };
       if (env.DEV_RETURN_LOGIN_CODE === "1") payload.devCode = code;
       if (!sent && env.DEV_RETURN_LOGIN_CODE !== "1") {
         return lib.error("E-mail versturen is nog niet geconfigureerd (Cloudflare Email).", 503);

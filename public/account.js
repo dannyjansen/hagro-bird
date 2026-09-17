@@ -20,6 +20,8 @@
   let me = null;
   let pendingEmail = "";
   let pendingName = "";
+  let emailExists = null;
+  let lookupTimer = 0;
 
   function showMsg(text, isError) {
     if (!msgEl) return;
@@ -34,9 +36,49 @@
     if (!res.ok) {
       const err = new Error(data.error || "Er ging iets mis.");
       err.status = res.status;
+      err.needsName = !!data.needsName;
       throw err;
     }
     return data;
+  }
+
+  function setNameVisible(visible) {
+    if (!nameEl) return;
+    nameEl.hidden = !visible;
+    if (!visible) nameEl.value = "";
+  }
+
+  function applyExists(exists) {
+    emailExists = !!exists;
+    setNameVisible(!exists);
+  }
+
+  async function lookupEmail(email) {
+    if (!email) {
+      emailExists = null;
+      setNameVisible(false);
+      return;
+    }
+    try {
+      const data = await api("/api/auth/lookup?email=" + encodeURIComponent(email));
+      applyExists(!!data.exists);
+    } catch {
+      emailExists = null;
+      setNameVisible(false);
+    }
+  }
+
+  function scheduleLookup() {
+    const email = (emailEl && emailEl.value ? emailEl.value : "").trim().toLowerCase();
+    window.clearTimeout(lookupTimer);
+    if (!email || !email.includes("@")) {
+      emailExists = null;
+      setNameVisible(false);
+      return;
+    }
+    lookupTimer = window.setTimeout(() => {
+      lookupEmail(email);
+    }, 280);
   }
 
   function avatarUrl(user) {
@@ -158,30 +200,52 @@
     return Promise.reject(new Error("Foto-upload is niet beschikbaar."));
   }
 
+  if (emailEl) {
+    emailEl.addEventListener("input", scheduleLookup);
+    emailEl.addEventListener("change", scheduleLookup);
+  }
+  setNameVisible(false);
+
   if (loginForm) {
     loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       showMsg("");
       const email = (emailEl.value || "").trim().toLowerCase();
-      const name = (nameEl.value || "").trim();
+      const name = nameEl.hidden ? "" : (nameEl.value || "").trim();
       if (!email) {
         showMsg("Vul je e-mailadres in.", true);
         return;
       }
+      if (emailExists === false && !name) {
+        setNameVisible(true);
+        showMsg("Vul je naam in voor de eerste keer.", true);
+        nameEl.focus();
+        return;
+      }
       sendBtn.disabled = true;
       try {
+        const body = { email };
+        if (name) body.name = name;
         const data = await api("/api/auth/request", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, name }),
+          body: JSON.stringify(body),
         });
         pendingEmail = email;
         pendingName = name;
+        if (data.exists) {
+          applyExists(true);
+          pendingName = "";
+        }
         codeForm.hidden = false;
         codeEl.value = data.devCode || "";
         codeEl.focus();
         showMsg(data.devCode ? `Dev-code: ${data.devCode}` : "Code is verstuurd. Check je e-mail.");
       } catch (err) {
+        if (err.needsName) {
+          applyExists(false);
+          nameEl.focus();
+        }
         showMsg(err.message, true);
       } finally {
         sendBtn.disabled = false;
@@ -199,7 +263,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: pendingEmail || (emailEl.value || "").trim().toLowerCase(),
-            name: pendingName || (nameEl.value || "").trim(),
+            name: pendingName || (nameEl.hidden ? "" : (nameEl.value || "").trim()),
             code: (codeEl.value || "").trim(),
           }),
         });
