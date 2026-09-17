@@ -133,6 +133,17 @@ function publicUser(row) {
   };
 }
 
+function parseFrom(value) {
+  const raw = String(value || "").trim();
+  const angled = /^(.*)<([^>]+)>\s*$/.exec(raw);
+  if (angled) {
+    const name = angled[1].trim().replace(/^["']|["']$/g, "");
+    const email = angled[2].trim();
+    return name ? { name, email } : email;
+  }
+  return raw;
+}
+
 function loginEmailHtml(name, code) {
   const groet = name ? `Hoi ${escapeHtml(name)},` : "Hoi,";
   return `<!doctype html>
@@ -175,6 +186,7 @@ export {
   hmacHex,
   parseDataUrl,
   publicUser,
+  parseFrom,
   loginEmailHtml,
   escapeHtml,
 };
