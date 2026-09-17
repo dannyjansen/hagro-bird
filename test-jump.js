@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const J = require("./jump.js");
+const J = require("./public/jump.js");
 
 let failed = 0;
 function test(name, fn) {
@@ -62,6 +62,33 @@ test("pointerdown and touchstart of the same tap are treated as one input", () =
   assert.equal(J.isDuplicateInput(100, 100), true);
   assert.equal(J.isDuplicateInput(100, 108), true);
   assert.equal(J.isDuplicateInput(100, 140), false);
+});
+
+test("Android text-node taps do not crash UI hit-testing", () => {
+  const btn = {
+    nodeType: 1,
+    closest: (sel) => (sel.includes("button") ? btn : null),
+  };
+  const text = { nodeType: 3, parentElement: btn };
+  assert.equal(J.isUiControl(btn), true);
+  assert.equal(J.isUiControl(text), true);
+  assert.equal(J.isUiControl({ nodeType: 3, parentElement: null }), false);
+  assert.equal(J.eventElement(text), btn);
+});
+
+test("pointer-capable browsers skip the extra touchstart listener", () => {
+  assert.equal(J.prefersPointerEvents({ PointerEvent: function PointerEvent() {} }), true);
+  assert.equal(J.prefersPointerEvents({}), false);
+});
+
+test("view size prefers visualViewport so Android Chrome chrome is included", () => {
+  const size = J.viewSizeFrom({
+    visualViewport: { width: 360.4, height: 640.6 },
+    innerWidth: 412,
+    innerHeight: 915,
+  });
+  assert.equal(size.W, 360);
+  assert.equal(size.H, 641);
 });
 
 test("all quality levels stay at 60fps and the same canvas resolution", () => {
