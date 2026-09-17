@@ -121,7 +121,12 @@
   async function submitScore(score) {
     const n = Number(score) || 0;
     // Ranking is named accounts only. Guest runs never POST /api/score.
-    if (!me || !me.id || !(me.name || "").trim() || n < 1) return;
+    // Use the public me() getter so start-gating and scoring agree.
+    const user =
+      window.HagroAccount && typeof window.HagroAccount.me === "function"
+        ? window.HagroAccount.me()
+        : me;
+    if (!user || !user.id || !(user.name || "").trim() || n < 1) return;
     try {
       await api("/api/score", {
         method: "POST",
