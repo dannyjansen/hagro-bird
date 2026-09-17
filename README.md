@@ -18,6 +18,7 @@ Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Met `DEV_RETURN_LOGIN_CODE=
 Zonder Worker, alleen de oude static preview:
 
 ```bash
+npm run assets
 python3 -m http.server 4173 --directory public
 ```
 
@@ -25,7 +26,13 @@ Dan werkt het spel, maar inloggen/ranking niet.
 
 ## 2. Productie (GitHub → Cloudflare Workers Builds)
 
-Niet lokaal `wrangler deploy` naar productie. Koppel deze repo aan Cloudflare Workers Builds (zoals Mony): `npm test` mag als build-command, daarna `npx wrangler deploy`. De huidige Vercel-site blijft de static files hosten tot die overstap; accounts vereisen de Worker + D1.
+Niet lokaal `wrangler deploy` naar productie. Koppel deze repo aan Cloudflare Workers Builds. Build command:
+
+```bash
+npm test && node scripts/sync-assets.mjs && npx wrangler deploy
+```
+
+Sprites staan in `assets/` en worden naar `public/assets` gekopieerd vóór de Worker-deploy. De huidige Vercel-site blijft de static files hosten tot die overstap; accounts vereisen de Worker + D1.
 
 Eenmalig in Cloudflare (account van Danny):
 

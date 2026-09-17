@@ -1,5 +1,5 @@
 {
-  "buildCommand": "echo public",
+  "buildCommand": "mkdir -p public/assets && cp -a assets/. public/assets && echo public",
   "outputDirectory": "public",
   "headers": [
     {
