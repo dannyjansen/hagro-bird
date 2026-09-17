@@ -1,4 +1,6 @@
 {
+  "buildCommand": "echo public",
+  "outputDirectory": "public",
   "headers": [
     {
       "source": "/assets/(.*)",

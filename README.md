@@ -2,60 +2,66 @@
 
 Wachtspelletje voor Hagro-klanten. Tikken met één vinger: de uil (of mus) flapt tussen keukenkasten door.
 
-Static frontend, klaar voor Vercel. Geen backend, geen cookies, geen tracking. Highscore staat in `localStorage`.
+Accounts werken met een e-mailcode (geen wachtwoord). Ranking en profielfoto hangen aan dat account. De canvas-game blijft vanilla JS.
 
-## 1. Lokaal testen
-
-Vanuit deze map:
+## 1. Lokaal
 
 ```bash
-python3 -m http.server 4173
+cp .dev.vars.example .dev.vars
+npm install
+npm test
+npm run dev
 ```
 
-Open [http://localhost:4173](http://localhost:4173) op je telefoon (zelfde wifi) of in Chrome met device toolbar (portrait).
+Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Met `DEV_RETURN_LOGIN_CODE=1` in `.dev.vars` verschijnt de login-code in het scherm (geen e-mail nodig).
 
-Alternatief:
+Zonder Worker, alleen de oude static preview:
 
 ```bash
-npx --yes serve -p 4173
+python3 -m http.server 4173 --directory public
 ```
 
-## 2. Preview op Vercel
+Dan werkt het spel, maar inloggen/ranking niet.
 
-Eenmalig inloggen, daarna vanuit de projectmap:
+## 2. Productie (GitHub → Cloudflare Workers Builds)
+
+Niet lokaal `wrangler deploy` naar productie. Koppel deze repo aan Cloudflare Workers Builds (zoals Mony): `npm test` mag als build-command, daarna `npx wrangler deploy`. De huidige Vercel-site blijft de static files hosten tot die overstap; accounts vereisen de Worker + D1.
+
+Eenmalig in Cloudflare (account van Danny):
+
+1. D1-database `hagro-bird` aanmaken (EU mag).
+2. `database_id` in `wrangler.jsonc` zetten.
+3. Migratie **vóór** de Worker-release:
 
 ```bash
-npx vercel
+npx wrangler d1 migrations apply DB --remote
 ```
 
-Volg de vragen (scope, projectnaam). Je krijgt een preview-URL, bijvoorbeeld `https://hagrobird-xxx.vercel.app`.
-
-## 3. Productie
+4. Secrets:
 
 ```bash
-npx vercel --prod
+npx wrangler secret put AUTH_SECRET
+npx wrangler secret put RESEND_API_KEY
 ```
 
-Of: koppel de GitHub-repo in het Vercel-dashboard. Push naar `main` bouwt en publiceert automatisch. Geen GitHub Actions-deploy nodig.
+5. `EMAIL_FROM` in `wrangler.jsonc` (of als secret) naar een geverifieerd Resend-adres. De placeholder `beth.t@example.com` mailt alleen naar het Resend-account zelf tot er een eigen domein is geverifieerd.
 
-## 4. Eigen subdomain
+Geen `BETTER_AUTH` / wachtwoorden: dit spel heeft alleen e-mailcodes.
 
-In het [Vercel-dashboard](https://vercel.com/dashboard) → project **HagroBird** → **Settings** → **Domains**:
+## 3. Vercel
 
-- voeg `hagrobird.jouwdomein.nl` toe, of
-- gebruik het projectdomein `hagro-bird.vercel.app`
-
-Zet DNS (CNAME) zoals Vercel aangeeft. Die URL gaat op de QR-code.
-
-Geen environment variables of secrets nodig.
+`vercel.json` blijft staan zodat een bestaande Vercel-koppeling de frontend kan blijven serveren. `/api/*` bestaat daar niet; login toont dan dat de accountserver ontbreekt. Speelbaar blijft het.
 
 ## Besturing
 
-- Tik of klik: flap
+- Tik of klik in het veld: flap (tijdens het spel)
+- Start/opnieuw: de gouden knop
 - Spatie / pijl omhoog: flap
 - M: mute
-- Record blijft bewaard op dit toestel
+- Record op dit toestel blijft in `localStorage`; de ranking is accountgebonden
 
 ## Stack
 
-`index.html` · `game.js` · `style.css` · `assets/` — Canvas 2D, geen framework.
+`index.html` · `game.js` · `account.js` · `style.css` · `assets/` — Canvas 2D.
+`src/worker.js` + D1 — e-mailcode, sessie, ranking, avatar.
+E-mail via [Resend](https://resend.com).
