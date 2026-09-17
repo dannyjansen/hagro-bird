@@ -34,24 +34,12 @@ npm test && node scripts/sync-assets.mjs && npx wrangler deploy
 
 Sprites staan in `assets/` en worden naar `public/assets` gekopieerd vóór de Worker-deploy. De huidige Vercel-site blijft de static files hosten tot die overstap; accounts vereisen de Worker + D1.
 
-Eenmalig in Cloudflare (account van Danny):
+Cloudflare (account van Danny):
 
-1. D1-database `hagro-bird` aanmaken (EU mag).
-2. `database_id` in `wrangler.jsonc` zetten.
-3. Migratie **vóór** de Worker-release:
-
-```bash
-npx wrangler d1 migrations apply DB --remote
-```
-
-4. Secrets:
-
-```bash
-npx wrangler secret put AUTH_SECRET
-npx wrangler secret put RESEND_API_KEY
-```
-
-5. `EMAIL_FROM` in `wrangler.jsonc` (of als secret) naar een geverifieerd Resend-adres. De placeholder `beth.t@example.com` mailt alleen naar het Resend-account zelf tot er een eigen domein is geverifieerd.
+1. D1-database `hagro-bird` (`2b836d4a-74df-410d-8fb9-b40f8df2c309`) is aangemaakt in WEUR.
+2. Migraties `0001_accounts.sql` en `0002_app_settings.sql` zijn remote toegepast.
+3. Loginmails gaan via Cloudflare Email Service (`send_email` binding), afzender `HagroBird <hello@dannojustin.com>` (zelfde geverifieerde domein als Danno). Geen Resend.
+4. Optioneel: `npx wrangler secret put AUTH_SECRET` — zonder secret bootstrapt de Worker een HMAC-key in D1 (`app_settings`).
 
 Geen `BETTER_AUTH` / wachtwoorden: dit spel heeft alleen e-mailcodes.
 
@@ -71,4 +59,4 @@ Geen `BETTER_AUTH` / wachtwoorden: dit spel heeft alleen e-mailcodes.
 
 `index.html` · `game.js` · `account.js` · `style.css` · `assets/` — Canvas 2D.
 `src/worker.js` + D1 — e-mailcode, sessie, ranking, avatar.
-E-mail via [Resend](https://resend.com).
+E-mail via [Cloudflare Email Service](https://developers.cloudflare.com/email-service/).

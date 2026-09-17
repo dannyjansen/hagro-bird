@@ -9,6 +9,7 @@ import {
   cookieValue,
   sessionCookie,
   escapeHtml,
+  parseFrom,
 } from "./src/lib.mjs";
 
 let failed = 0;
@@ -95,6 +96,14 @@ test("cookie parser reads hb_session", () => {
 
 test("html in names cannot break the email template", () => {
   assert.equal(escapeHtml("<b>x</b>"), "&lt;b&gt;x&lt;/b&gt;");
+});
+
+test("parses Cloudflare From into name + email", () => {
+  assert.deepEqual(parseFrom("HagroBird <hello@dannojustin.com>"), {
+    name: "HagroBird",
+    email: "hello@dannojustin.com",
+  });
+  assert.equal(parseFrom("hello@dannojustin.com"), "hello@dannojustin.com");
 });
 
 if (failed) {
