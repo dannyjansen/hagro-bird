@@ -16,12 +16,19 @@
     {
       "binding": "DB",
       "database_name": "hagro-bird",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "2b836d4a-74df-410d-8fb9-b40f8df2c309",
       "migrations_dir": "migrations"
     }
   ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["hello@dannojustin.com"]
+    }
+  ],
   "vars": {
-    "EMAIL_FROM": "HagroBird <beth.t@example.com>"
+    "EMAIL_FROM": "HagroBird <hello@dannojustin.com>",
+    "TRUSTED_ORIGINS": "https://hagro-bird.vercel.app"
   },
   "observability": {
     "enabled": true,
