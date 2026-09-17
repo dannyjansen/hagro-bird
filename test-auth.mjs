@@ -10,6 +10,7 @@ import {
   sessionCookie,
   escapeHtml,
   parseFrom,
+  shouldRankScore,
 } from "./src/lib.mjs";
 
 let failed = 0;
@@ -75,6 +76,13 @@ test("same-origin posts are allowed", () => {
   });
   assert.equal(originOk(other, {}), false);
   assert.equal(originOk(other, { TRUSTED_ORIGINS: "https://evil.example" }), true);
+});
+
+test("ranking is named accounts only", () => {
+  assert.equal(shouldRankScore(null, 12), false);
+  assert.equal(shouldRankScore({ id: "u1", name: "" }, 12), false);
+  assert.equal(shouldRankScore({ id: "u1", name: "Ada" }, 0), false);
+  assert.equal(shouldRankScore({ id: "u1", name: "Ada" }, 12), true);
 });
 
 test("session cookie is httpOnly and cleared on logout", () => {

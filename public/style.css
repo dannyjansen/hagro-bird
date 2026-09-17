@@ -240,7 +240,8 @@ h1 {
   color: var(--white);
 }
 
-.cta {
+.cta,
+.guest-start {
   margin: 1.15rem auto 0;
   display: block;
   width: 100%;
@@ -252,8 +253,17 @@ h1 {
   font-weight: 700;
   padding: 0.85rem 0.8rem;
   cursor: pointer;
-  animation: pulse 1.6s ease-in-out infinite;
   touch-action: manipulation;
+}
+
+.cta {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+#overlay[data-mode="start"].is-guest #cta,
+#overlay[data-mode="dead"] #guest-start,
+#overlay:not(.is-guest) #guest-start {
+  display: none;
 }
 
 .site {

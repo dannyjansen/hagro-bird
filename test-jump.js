@@ -64,6 +64,14 @@ test("pointerdown and touchstart of the same tap are treated as one input", () =
   assert.equal(J.isDuplicateInput(100, 140), false);
 });
 
+test("login overlay ignores space/flap until a named account or the guest button", () => {
+  assert.equal(J.canStartFromPlayInput({ overlayOn: true, mode: "start", loggedIn: false }), false);
+  assert.equal(J.canStartFromPlayInput({ overlayOn: true, mode: "start", loggedIn: true }), true);
+  assert.equal(J.canStartFromPlayInput({ overlayOn: true, mode: "dead", loggedIn: false }), true);
+  assert.equal(J.canStartFromPlayInput({ overlayOn: false, mode: "play", loggedIn: false }), true);
+  assert.equal(J.canStartFromPlayInput({ overlayOn: false, mode: "start", loggedIn: false }), true);
+});
+
 test("Android text-node taps do not crash UI hit-testing", () => {
   const btn = {
     nodeType: 1,

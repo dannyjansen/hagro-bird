@@ -80,6 +80,8 @@
   }
 
   function renderAccount() {
+    const overlay = document.getElementById("overlay");
+    if (overlay) overlay.classList.toggle("is-guest", !me);
     if (!guestEl || !userEl) return;
     if (me) {
       guestEl.hidden = true;
@@ -118,7 +120,8 @@
 
   async function submitScore(score) {
     const n = Number(score) || 0;
-    if (!me || n < 1) return;
+    // Ranking is named accounts only. Guest runs never POST /api/score.
+    if (!me || !me.id || !(me.name || "").trim() || n < 1) return;
     try {
       await api("/api/score", {
         method: "POST",

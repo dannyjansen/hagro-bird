@@ -109,7 +109,7 @@ async function handleRequest(request, env) {
 
     if (path === "/api/leaderboard" && request.method === "GET") {
       const rows = await env.DB.prepare(
-        `SELECT ${userSelect()} FROM users WHERE best_score > 0 ORDER BY best_score DESC, updated_at ASC LIMIT 25`
+        `SELECT ${userSelect()} FROM users WHERE best_score > 0 AND TRIM(COALESCE(name, '')) != '' ORDER BY best_score DESC, updated_at ASC LIMIT 25`
       ).all();
       const players = (rows.results || []).map((row, i) => ({
         id: row.id,
@@ -251,6 +251,9 @@ async function handleRequest(request, env) {
       const score = Number(body.score);
       if (!Number.isInteger(score) || score < 0 || score > 9999) {
         return lib.error("Ongeldige score.");
+      }
+      if (!lib.shouldRankScore(user, score)) {
+        return lib.error("Ranking is alleen voor accounts met naam.", 403);
       }
       const t = lib.now();
       await env.DB.prepare(
