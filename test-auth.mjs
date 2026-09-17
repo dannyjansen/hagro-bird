@@ -4,6 +4,9 @@ import {
   normalizeEmail,
   normalizeName,
   parseDataUrl,
+  hexToBytes,
+  sniffImageType,
+  decodeStoredAvatar,
   publicUser,
   originOk,
   cookieValue,
@@ -38,12 +41,31 @@ test("names are trimmed and capped", () => {
 });
 
 test("avatar data URLs must be small raster images", () => {
-  const payload = Buffer.alloc(40, 7).toString("base64");
-  const ok = parseDataUrl("data:image/jpeg;base64," + payload);
+  const jpeg = Buffer.from(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wAAAAkABxATEBQSEhQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFP/AABEIAAEAAQMBEQACEQEDEQH/xAAhAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/2gAIAQEAAQUCf//Z",
+    "base64"
+  );
+  const ok = parseDataUrl("data:image/jpeg;base64," + jpeg.toString("base64"));
   assert.equal(ok.type, "image/jpeg");
-  assert.equal(ok.bytes.length, 40);
+  assert.ok(ok.bytes.length >= 32);
+  assert.equal(sniffImageType(ok.bytes), "image/jpeg");
   assert.equal(parseDataUrl("data:text/plain;base64,aaaa"), null);
   assert.equal(parseDataUrl("data:image/jpeg;base64,xxxx"), null);
+  assert.equal(parseDataUrl("data:image/jpeg;base64," + Buffer.alloc(40, 7).toString("base64")), null);
+});
+
+test("stored avatars decode from D1 hex because Worker BLOB rows are empty", () => {
+  const jpeg = parseDataUrl(
+    "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wAAAAkABxATEBQSEhQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFP/AABEIAAEAAQMBEQACEQEDEQH/xAAhAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/2gAIAQEAAQUCf//Z"
+  );
+  const hex = Buffer.from(jpeg.bytes).toString("hex").toUpperCase();
+  assert.equal(sniffImageType(hexToBytes(hex)), "image/jpeg");
+  const fromHex = decodeStoredAvatar({ avatar_hex: hex });
+  assert.equal(fromHex.type, "image/jpeg");
+  assert.deepEqual([...fromHex.bytes], [...jpeg.bytes]);
+  const fromEmptyBlob = decodeStoredAvatar({ avatar: new ArrayBuffer(0), avatar_hex: hex });
+  assert.equal(fromEmptyBlob.type, "image/jpeg");
+  assert.equal(decodeStoredAvatar({ avatar: new ArrayBuffer(0) }), null);
 });
 
 test("public user omits login code fields", () => {
