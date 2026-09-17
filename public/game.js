@@ -299,3 +299,31 @@
     courseAt = 0;
     resetBird();
   }
+
+  function startGame() {
+    while (bits.length) bitPool.push(bits.pop());
+    overlay.classList.add("is-off");
+    hud.classList.add("is-on");
+    const prevW = state.W;
+    const prevH = state.H;
+    layout();
+    if (!prepared || prepared.length < J.AHEAD || state.W !== prevW || state.H !== prevH) {
+      prepareLevel();
+    }
+    course = prepared;
+    courseAt = 0;
+    prepared = null;
+    clearCabs();
+    ensureLive();
+    resetBird();
+    bird.y = spawnY();
+    bird.vy = -400 * state.vu;
+    state.mode = "play";
+    state.spawnUntil = performance.now() + 250;
+    sfx.flap();
+    puff(bird.x - 8, bird.y + 10, 6, PAL.white);
+    state.qualityGraceUntil = performance.now() + 1800;
+    state.badWindows = 0;
+    frameSamples.length = 0;
+    warmFirst(cabs, 1);
+  }
